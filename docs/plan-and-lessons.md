@@ -186,6 +186,14 @@ unit-tested.
     The v1 trust posture (allowlist-scoped, cwd-by-convention) is a documented
     decision — its hardening options (low-priv user, container-per-
     conversation) are evidence-backed, not paranoid.
+13. **Cursor-style state persists as a UNION, and tests must drive the
+    multi-item shape.** The reply pump saved only the current tick's delivered
+    ids (replace, not union), so with two answers the cursor flip-flopped
+    `[12] ↔ [71]` — ~900 doc rewrites and alternating room spam once commit
+    6b27d3b gave the watch a sync heartbeat. Both pump tests used exactly one
+    answer, where replace == union. The regression test now drives two answers
+    across three ticks. General rule: test the shape that distinguishes the
+    semantics you actually implemented.
 
 ## 5. Provenance
 
