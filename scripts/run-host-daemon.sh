@@ -18,6 +18,10 @@ ROOM="${1:?usage: scripts/run-host-daemon.sh '<room id or #alias>' '<allowed-use
 USERS="${2:?usage: scripts/run-host-daemon.sh '<room id or #alias>' '<allowed-user-ids,comma-separated>'}"
 
 export MATRIX_HOMESERVER="${MATRIX_HOMESERVER:-https://matrix.jacks.im}"
+# The host's IPv6 egress to cloudflare edges is broken (connect-refusal in ms;
+# DNS lists AAAA first, and node 22 tries v6 first without curl-style fallback —
+# the 2026-10-28 ETIMEDOUT flapping). Force v4-first for node's resolver.
+export NODE_OPTIONS="${NODE_OPTIONS:---dns-result-order=ipv4first}"
 export MATRIX_ROOM="$ROOM"
 export MATRIX_ALLOWED_USERS="$USERS"
 MATRIX_ACCESS_TOKEN="$(cat /dev/shm/pi-host/matrix_token)"
