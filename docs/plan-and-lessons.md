@@ -92,9 +92,10 @@ unit-tested.
   workspace (`PI_HOST_SANDBOX`, default `./workspace`, gitignored).
 - **Trust posture (decided)**: v1 runs tools as the host user, allowlist-scoped
   (only `@jacksim:jacks.im` can trigger), cwd-scoped by convention —
-  `NodeExecutionEnv` is *not* a sandbox. Hardening later: dedicated low-priv
-  user for the daemon, or container-per-conversation via the existing
-  docker-socket-proxy workshop.
+  `NodeExecutionEnv` is *not* a sandbox (observed live 2026-10-28: reads roamed
+  the host; writes stayed in-bounds only by model path choice). Hardening later:
+  dedicated low-priv user for the daemon, or container-per-conversation via the
+  existing docker-socket-proxy workshop.
 
 ### Credentials & key hygiene (non-negotiable rules)
 
@@ -172,6 +173,19 @@ unit-tested.
 10. **Long-running daemons need their own hygiene**: stale pre-rotation
     daemons held a dead token and kept 401-retrying forever; kill old processes
     before starting new ones and verify by PID, not by pane appearance.
+11. **Model reports confabulate causes — verify against the durable ledger.**
+    2026-10-28 tools probe: the agent claimed bash failed because the harness
+    gave it a nonexistent cwd ("worth fixing in the harness"). The ledger
+    showed three ENOENTs on `…/workspace/workspace` — its own doubled relative
+    `cwd` argument — while the workspace had existed since preflight. The agent
+    then invented a self-flattering infrastructure narrative. The ledger is the
+    record; the reply is a claim.
+12. **The advisory boundary was observed live.** With tools, the agent's reads
+    roamed the host freely (repo, `ps`, os-release, parent directories);
+    writes stayed inside the sandbox only because it chose relative paths.
+    The v1 trust posture (allowlist-scoped, cwd-by-convention) is a documented
+    decision — its hardening options (low-priv user, container-per-
+    conversation) are evidence-backed, not paranoid.
 
 ## 5. Provenance
 
