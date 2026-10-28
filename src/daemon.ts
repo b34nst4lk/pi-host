@@ -28,7 +28,13 @@
 //   OLLAMA_API_KEY           required
 //   OLLAMA_MODEL             default deepseek-v4.1-flash
 //   OLLAMA_BASE_URL          default https://ollama.com/v1
-//   OLLAMA_CONTEXT_WINDOW    default 32768   (OLLAMA_MAX_TOKENS default 4096)
+//   OLLAMA_CONTEXT_WINDOW    default 131072  (deepseek-v4.1-flash:cloud's real
+//                            card is 128K context / 16.4K out; the earlier
+//                            32768 default made compaction fire after nearly
+//                            every tool round, and a summarization call that
+//                            returns no text then fails the whole run,
+//                            model_error. Match the real window: far fewer
+//                            summarization calls. OLLAMA_MAX_TOKENS default 16384)
 //   PI_HOST_DB               default ./storage/session.sqlite (renamed from
 //                            the spike's STEER_DB; durable ledger of the host)
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
@@ -66,8 +72,8 @@ const env = {
 	ollamaApiKey: process.env.OLLAMA_API_KEY ?? "",
 	ollamaModel: process.env.OLLAMA_MODEL ?? "deepseek-v4.1-flash",
 	ollamaBaseUrl: process.env.OLLAMA_BASE_URL ?? "https://ollama.com/v1",
-	contextWindow: Number(process.env.OLLAMA_CONTEXT_WINDOW ?? 32768),
-	maxTokens: Number(process.env.OLLAMA_MAX_TOKENS ?? 4096),
+	contextWindow: Number(process.env.OLLAMA_CONTEXT_WINDOW ?? 131072),
+	maxTokens: Number(process.env.OLLAMA_MAX_TOKENS ?? 16384),
 	db: process.env.PI_HOST_DB ?? "./storage/session.sqlite",
 	sandbox: process.env.PI_HOST_SANDBOX ?? "./workspace",
 };
