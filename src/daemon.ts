@@ -270,7 +270,9 @@ try {
 			cursor = batch.nextBatch;
 		} catch (error) {
 			if (controller.signal.aborted) break;
-			log(`sync error: ${error instanceof Error ? error.message : error}; retrying in 5s`);
+			const cause = (error as { cause?: unknown }).cause;
+			const causeText = cause instanceof Error ? (cause as Error & { code?: string }).code ?? cause.message : undefined;
+			log(`sync error: ${error instanceof Error ? error.message : error} (${causeText ?? "no cause"}); retrying in 5s`);
 			await new Promise((resolve) => setTimeout(resolve, 5000));
 		}
 	}
