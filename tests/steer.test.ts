@@ -10,13 +10,16 @@ import { fauxAssistantMessage, fauxProvider } from "@earendil-works/pi-ai/provid
 import { describe, expect, it } from "vitest";
 import { createRegistry, Harness, InboxDoc, MemoryStorage, type Submission } from "@earendil-works/pi-durable";
 import {
+	classifySyncBatch,
 	createReplyPump,
 	extractAssistantTexts,
 	forRoom,
 	parseMatrixCommand,
 	pickNewEvents,
 	submitMatrixCommand,
+	SYNC_SEEN_CAP,
 	withdrawSubmissions,
+	type SyncState,
 } from "../src/core/steer.ts";
 import { createMatrixClient } from "../src/surfaces/matrix-client.ts";
 
@@ -242,6 +245,46 @@ describe("forRoom (pi-spike as a plain user elsewhere must not steer)", () => {
 		const accepted = new Set(["!room:jacks.im"]);
 		expect(forRoom({ id: "$1", sender: "@jacksim:jacks.im", text: "hi", room: "!room:jacks.im" }, accepted)).toBe(true);
 		expect(forRoom({ id: "$2", sender: "@jacksim:jacks.im", text: "hi", room: "!other:jacks.im" }, accepted)).toBe(false);
+	});
+});
+
+describe("classifySyncBatch (durable sync cursor + first-boot skip)", () => {
+	const ev = (id: string, room = "!r:jacks.im") => ({ id, sender: "@jack:jacks.im", text: "hi", room });
+
+	it("first boot (batch null): flags the backlog for skipping, marks it durably seen", () => {
+		const out = classifySyncBatch({ batch: null, seen: [] }, new Set(), [ev("$1"), ev("$2")]);
+		expect(out.skipBacklog).toBe(true);
+		expect(out.fresh.map((e) => e.id)).toEqual(["$1", "$2"]);
+		expect(out.durableSeen).toEqual(["$1", "$2"]);
+	});
+
+	it("resume boot (batch set): processes only unseen events, grows the durable seen list", () => {
+		const state = { batch: "b1", seen: ["$1"] };
+		const out = classifySyncBatch(state, new Set(), [ev("$1"), ev("$2"), ev("$3")]);
+		expect(out.skipBacklog).toBe(false);
+		expect(out.fresh.map((e) => e.id)).toEqual(["$2", "$3"]);
+		expect(out.durableSeen).toEqual(["$1", "$2", "$3"]);
+	});
+
+	it("a server replay of durably-seen events never resubmits (capped memory is not the only guard)", () => {
+		const out = classifySyncBatch({ batch: "b2", seen: ["$1"] }, new Set(), [ev("$1")]);
+		expect(out.fresh).toEqual([]);
+		expect(out.durableSeen).toEqual(["$1"]);
+	});
+
+	it("caps the durable seen list at SYNC_SEEN_CAP, keeping the newest ids", () => {
+		const ids = Array.from({ length: SYNC_SEEN_CAP + 30 }, (_, i) => `$e${i}`);
+		const out = classifySyncBatch({ batch: "b", seen: [] }, new Set(), ids.map((id) => ev(id)));
+		expect(out.durableSeen.length).toBe(SYNC_SEEN_CAP);
+		expect(out.durableSeen[0]).toBe("$e30"); // oldest dropped
+		expect(out.durableSeen[SYNC_SEEN_CAP - 1]).toBe(`$e${SYNC_SEEN_CAP + 29}`);
+	});
+
+	it("events seen by this process are neither fresh nor re-added", () => {
+		const memory = new Set<string>(["$1"]);
+		const out = classifySyncBatch({ batch: "b", seen: [] }, memory, [ev("$1"), ev("$2")]);
+		expect(out.fresh.map((e) => e.id)).toEqual(["$2"]);
+		expect(out.durableSeen).toEqual(["$2"]);
 	});
 });
 

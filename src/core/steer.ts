@@ -78,6 +78,44 @@ export function pickNewEvents(
 	return { fresh, seen: next };
 }
 
+/**
+ * Durable sync state: the `/sync` `since` cursor, plus the ids of events this
+ * daemon has already ingested (capped, newest kept). `batch: null` marks a
+ * daemon that has never completed a sync.
+ */
+export type SyncState = { batch: string | null; seen: ReadonlyArray<string> };
+
+/** How many ingested Matrix event ids the durable seen list keeps. */
+export const SYNC_SEEN_CAP = 200;
+
+export type SyncBatchClassification = {
+	/** Events to submit: neither durably seen nor seen by this process. */
+	readonly fresh: TextEvent[];
+	/** The durable seen list to persist: previous ids plus every fresh id, newest kept, capped. */
+	readonly durableSeen: string[];
+	/** True when this batch established the cursor (no stored batch): the room backlog must NOT be submitted — only messages sent after the daemon is up steer it. */
+	readonly skipBacklog: boolean;
+};
+
+/**
+ * Classify one sync batch against durable sync state and this process's memory.
+ * Guards against: first-boot backlog (skip), homeserver replays of already-
+ * ingested events after a restart or token invalidation (durable seen), and
+ * double-submission within one process (memory seen). Idempotent: callers
+ * persist `durableSeen` together with the returned `nextBatch`.
+ */
+export function classifySyncBatch(
+	durable: SyncState,
+	memorySeen: ReadonlySet<string>,
+	events: readonly TextEvent[],
+): SyncBatchClassification {
+	const durableSeenSet = new Set(durable.seen);
+	const fresh = events.filter((event) => !durableSeenSet.has(event.id) && !memorySeen.has(event.id));
+	const merged = [...durable.seen, ...fresh.map((event) => event.id)];
+	const durableSeen = merged.slice(Math.max(0, merged.length - SYNC_SEEN_CAP));
+	return { fresh, durableSeen, skipBacklog: durable.batch === null };
+}
+
 /** The parts of a transcript entry the reply pump reads. Durable entry records carry `id`, `kind`, and optional `model`. */
 /** Durable entry ids are branded numbers or strings depending on storage; the pump treats them opaquely. */
 export type PumpId = string | number;

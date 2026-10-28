@@ -38,6 +38,7 @@ import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite
 import { dirname } from "node:path";
 import { mkdirSync } from "node:fs";
 import {
+	classifySyncBatch,
 	createReplyPump,
 	forRoom,
 	pickNewEvents,
@@ -106,6 +107,21 @@ const SteerCursor = defineDoc<{ ids: Array<string | number> }>({
 	initial: () => ({ ids: [] }),
 });
 const CURSOR_CAP = 200;
+
+/**
+ * Durable sync state: the `/sync` since cursor plus the ids of ingested events
+ * (capped). First boot (batch null) skips the room backlog; restarts resume
+ * from the stored batch; a homeserver replay of already-ingested events never
+ * resubmits (classifySyncBatch in core/steer.ts holds the semantics).
+ */
+const SyncStateDoc = defineDoc<{ batch: string | null; seen: string[] }>({
+	kind: "app.sync-state",
+	version: 1,
+	scope: "conversation",
+	history: "latest",
+	fork: "initial",
+	initial: () => ({ batch: null, seen: [] }),
+});
 
 const db = await openNodeSqliteStorage(env.db);
 const harness = await Harness.open(
@@ -209,7 +225,9 @@ watch.start(async (value) => {
 });
 
 // --- sync loop ---
-let cursor = "";
+let durableSync: { batch: string | null; seen: string[] } =
+	(await harness.snapshot(SyncStateDoc, root.id, context)) ?? { batch: null, seen: [] };
+let cursor = durableSync.batch ?? "";
 let iterations = 0;
 const controller = new AbortController();
 process.on("SIGINT", () => controller.abort());
@@ -221,9 +239,25 @@ try {
 	while (!controller.signal.aborted) {
 		try {
 			const batch = await client.sync(cursor, iterations === 0 ? 0 : 30_000, controller.signal);
-			cursor = batch.nextBatch;
 			iterations += 1;
-			for (const event of batch.textEvents) await handleEvent(event);
+			const classification = classifySyncBatch(durableSync, seenEvents, batch.textEvents);
+			if (classification.skipBacklog) {
+				if (batch.textEvents.length > 0) {
+					log(`first boot: skipping ${batch.textEvents.length} backlog events (only messages sent after the daemon starts steer it)`);
+				}
+			} else {
+				for (const event of classification.fresh) await handleEvent(event);
+			}
+			// every batch event counts as seen by this process, skipped backlog included
+			for (const event of batch.textEvents) seenEvents.add(event.id);
+			// process first, persist after: a crash in between replays at most once, never skips
+			durableSync = { batch: batch.nextBatch, seen: classification.durableSeen };
+			await root.commit(async (tx) => {
+				const doc = await tx.doc(SyncStateDoc, root.id);
+				doc.batch = batch.nextBatch;
+				doc.seen = classification.durableSeen;
+			}, context);
+			cursor = batch.nextBatch;
 		} catch (error) {
 			if (controller.signal.aborted) break;
 			log(`sync error: ${error instanceof Error ? error.message : error}; retrying in 5s`);

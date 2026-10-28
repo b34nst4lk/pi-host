@@ -72,12 +72,17 @@ delivered** entries: a failed send stays outside the cursor and is retried on
 the next watch tick or next boot. At-least-once delivery; duplicate chat lines
 are harmless, lost answers are not.
 
-### Sync cursor persistence + first-boot skip (planned, next commit)
+### Sync cursor persistence + first-boot skip (live since 2026-10-28)
 
-Store the `/sync` `since` batch in a durable doc. On **first boot with no
-cursor**, perform an initial sync, mark the backlog seen, and **skip** it: only
-messages sent after the daemon is up steer it. Fixes the duplicate-answer
-re-ingestion on every restart (the "5 greetings" context pollution).
+The `/sync` `since` batch and the ids of ingested events (capped at 200) live in
+an `app.sync-state` conversation doc. On **first boot with no stored batch**, the
+daemon performs an initial sync, marks the backlog seen, and **skips** it: only
+messages sent after the daemon is up steer it. Restarts resume from the stored
+batch; a homeserver replay of already-ingested events (e.g. after a conduit
+restart invalidates sync tokens) is filtered by the durable seen list. Batches
+are processed before their cursor is persisted — a crash in between replays at
+most once, never skips. Semantics live in `classifySyncBatch` (core/steer.ts),
+unit-tested.
 
 ### Tools + execution environment (approved, next commit)
 
@@ -181,7 +186,7 @@ re-ingestion on every restart (the "5 greetings" context pollution).
 
 ## 6. Roadmap (ordered)
 
-1. Sync-cursor persistence + first-boot skip (kills re-ingestion duplicates).
+1. ~~Sync-cursor persistence + first-boot skip~~ **DONE 2026-10-28** (`classifySyncBatch`, `app.sync-state` doc).
 2. Tools (`CodingTools`) + `NodeExecutionEnv` sandbox workspace; re-probe
    "what environment are you in".
 3. Live sequence: `/steer` mid-generation → `/status` → `/stop`.
