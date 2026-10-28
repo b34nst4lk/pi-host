@@ -211,8 +211,8 @@ unit-tested.
 
 1. ~~Sync-cursor persistence + first-boot skip~~ **DONE 2026-10-28** (`classifySyncBatch`, `app.sync-state` doc).
 2. ~~Tools (`CodingTools`) + `NodeExecutionEnv` sandbox workspace~~ **DONE 2026-10-28** (`src/env.ts`, preamble updated).
-3. Live sequence: `/steer` mid-generation → `/status` → `/stop`.
-4. `kill -9` mid-generation with a live model — audit-2 roadmap item 1.
+3. Live sequence: `/steer` mid-generation → `/status` → `/stop` — **DONE 2026-10-28** (steer verified on the tic-tac-toe run; stop ledger-verified: live run aborted, submission withdrawn `unanswered (aborted)`, no leak).
+4. ~~`kill -9` mid-generation with a live model~~ **DONE 2026-10-28** — audit-2 roadmap item closed on the real rig: task SIGKILLed at `phase=request`, daemon restarted, `resume()` restarted the interrupted generation from its committed checkpoint, and the run continued to completion (a multi-turn Gleam tic-tac-toe build). Compaction fired after nearly every tool round (756K in / 708K cacheRead / 105K out tokens for the session).
 5. Containerize the daemon on `home_server-network` (conduit DNS), tmpfs key
    chain in compose; systemd-style restart policy.
 6. Real tasks: `defineTask` builds in the workspace (background tasks,
