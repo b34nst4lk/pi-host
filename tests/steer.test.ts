@@ -297,5 +297,6 @@ describe("Matrix client against a stub fetch", () => {
 		expect(sendCall?.init?.method).toEqual("PUT");
 		expect(JSON.stringify(sendCall?.init?.body)).toContain("hello back");
 		expect(JSON.stringify(sendCall?.init?.headers)).toContain("Bearer syt_token");
+		expect(JSON.stringify(sendCall?.init?.headers)).toContain("pi-host/0.1"); // CF rejects UA-less clients
 	});
 });

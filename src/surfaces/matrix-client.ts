@@ -14,6 +14,8 @@ const MAX_BODY_CHARS = 3000;
 export type MatrixClientOptions = {
 	readonly homeserver: string;
 	readonly accessToken: string;
+	/** Cloudflare in front of the tunnel rejects UA-less clients (error 1010); undici sends none. */
+	readonly userAgent?: string;
 	readonly fetchImpl?: typeof fetch;
 };
 
@@ -39,7 +41,10 @@ export type MatrixClient = {
 export function createMatrixClient(options: MatrixClientOptions): MatrixClient {
 	const base = options.homeserver.replace(/\/+$/, "");
 	const doFetch = options.fetchImpl ?? fetch;
-	const headers = { authorization: `Bearer ${options.accessToken}` };
+	const headers = {
+		authorization: `Bearer ${options.accessToken}`,
+		"user-agent": options.userAgent ?? "pi-host/0.1",
+	};
 
 	async function sync(since: string, timeoutMs: number, signal?: AbortSignal): Promise<SyncBatch> {
 		const params = new URLSearchParams({ timeout: String(Math.max(0, timeoutMs | 0)) });
