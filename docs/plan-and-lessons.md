@@ -84,11 +84,12 @@ are processed before their cursor is persisted — a crash in between replays at
 most once, never skips. Semantics live in `classifySyncBatch` (core/steer.ts),
 unit-tested.
 
-### Tools + execution environment (approved, next commit)
+### Tools + execution environment (live since 2026-10-28)
 
-- Install the built-in `CodingTools` extension (read/write/edit/bash).
-- `NodeExecutionEnv` with the conversation agent's `cwd` set to a dedicated
-  scratch workspace (`pi-host/workspace/`, gitignored).
+- The built-in `CodingTools` extension (read/write/edit/bash) is installed in
+  the registry; tools run through `NodeExecutionEnv` built per call from the
+  conversation's agent `cwd` (`src/env.ts`), defaulting to the sandbox
+  workspace (`PI_HOST_SANDBOX`, default `./workspace`, gitignored).
 - **Trust posture (decided)**: v1 runs tools as the host user, allowlist-scoped
   (only `@jacksim:jacks.im` can trigger), cwd-scoped by convention —
   `NodeExecutionEnv` is *not* a sandbox. Hardening later: dedicated low-priv
@@ -187,8 +188,7 @@ unit-tested.
 ## 6. Roadmap (ordered)
 
 1. ~~Sync-cursor persistence + first-boot skip~~ **DONE 2026-10-28** (`classifySyncBatch`, `app.sync-state` doc).
-2. Tools (`CodingTools`) + `NodeExecutionEnv` sandbox workspace; re-probe
-   "what environment are you in".
+2. ~~Tools (`CodingTools`) + `NodeExecutionEnv` sandbox workspace~~ **DONE 2026-10-28** (`src/env.ts`, preamble updated).
 3. Live sequence: `/steer` mid-generation → `/status` → `/stop`.
 4. `kill -9` mid-generation with a live model — audit-2 roadmap item 1.
 5. Containerize the daemon on `home_server-network` (conduit DNS), tmpfs key

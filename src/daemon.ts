@@ -37,6 +37,7 @@ import { defineDoc, Harness, InboxDoc, type Submission } from "@earendil-works/p
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { dirname } from "node:path";
 import { mkdirSync } from "node:fs";
+import { createAgentEnv } from "./env.ts";
 import {
 	classifySyncBatch,
 	createReplyPump,
@@ -68,6 +69,7 @@ const env = {
 	contextWindow: Number(process.env.OLLAMA_CONTEXT_WINDOW ?? 32768),
 	maxTokens: Number(process.env.OLLAMA_MAX_TOKENS ?? 4096),
 	db: process.env.PI_HOST_DB ?? "./storage/session.sqlite",
+	sandbox: process.env.PI_HOST_SANDBOX ?? "./workspace",
 };
 const missing: string[] = [];
 if (!env.accessToken) missing.push("MATRIX_ACCESS_TOKEN");
@@ -78,7 +80,7 @@ if (missing.length > 0) {
 	console.error(`PREFLIGHT FAIL — missing env: ${missing.join(", ")}`);
 	process.exit(2);
 }
-for (const requiredDir of [dirname(env.db)]) mkdirSync(requiredDir, { recursive: true });
+for (const requiredDir of [dirname(env.db), env.sandbox]) mkdirSync(requiredDir, { recursive: true });
 
 // --- durable side ---
 const models = createModels();
@@ -126,10 +128,12 @@ const SyncStateDoc = defineDoc<{ batch: string | null; seen: string[] }>({
 const db = await openNodeSqliteStorage(env.db);
 const harness = await Harness.open(
 	db,
-	{ models, registry, settings: { followUpMode: "all", steeringMode: "all" } },
+	{ models, registry, env: (target) => createAgentEnv(target, env.sandbox), settings: { followUpMode: "all", steeringMode: "all" } },
 	context,
 );
-const root = await harness.root(context, { agent: { model: { provider: "ollama-cloud", modelId: env.ollamaModel } } });
+const root = await harness.root(context, {
+	agent: { model: { provider: "ollama-cloud", modelId: env.ollamaModel }, cwd: env.sandbox },
+});
 harness.resume(); // interrupted inputs stay pending; queued work restarts
 log(`harness up: db=${env.db} conversation=${root.id} model=${env.ollamaModel}`);
 

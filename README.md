@@ -78,6 +78,7 @@ otherwise set `MATRIX_HOMESERVER` accordingly.
 | `OLLAMA_MODEL` | `deepseek-v4.1-flash` | |
 | `OLLAMA_BASE_URL` | `https://ollama.com/v1` | |
 | `PI_HOST_DB` | `./storage/session.sqlite` | durable ledger (renamed from spike `STEER_DB`) |
+| `PI_HOST_SANDBOX` | `./workspace` | agent workspace: cwd for its read/write/edit/bash tools |
 
 Commands in the room: plain text = follow-up · `/steer <text>` = steer the
 live run · `/stop` · `/status` · `/note <text>` (appends without asking the
