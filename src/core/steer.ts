@@ -38,7 +38,26 @@ export function parseMatrixCommand(text: string): MatrixCommand | null {
 }
 
 /** A text event as seen from a Matrix sync: id, sender, and the plain body. */
-export type TextEvent = { readonly id: string; readonly sender: string; readonly text: string };
+export type TextEvent = {
+	readonly id: string;
+	readonly sender: string;
+	readonly text: string;
+	readonly room: string;
+};
+
+/**
+ * True when the event belongs to one of the accepted rooms. Room ids are
+ * compared literally; callers pass every form they know (the configured room
+ * and, when resolvable, its resolved id) so alias configuration works.
+ *
+ * pi-spike is a normal user in the wider setup: it may be invited into rooms
+ * where other agents and people talk. Those events MUST NOT become steering
+ * input — a daemon that listens to every room it idles in submits household
+ * chatter to the durable agent.
+ */
+export function forRoom(event: TextEvent, acceptedRooms: ReadonlySet<string>): boolean {
+	return acceptedRooms.has(event.room);
+}
 
 /**
  * Filter a batch of sync events down to ones not seen before, returning the

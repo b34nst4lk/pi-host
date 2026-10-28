@@ -55,12 +55,12 @@ export function createMatrixClient(options: MatrixClientOptions): MatrixClient {
 		if (!response.ok) throw new Error(`matrix sync failed: HTTP ${response.status}`);
 		const body = (await response.json()) as { next_batch?: string; rooms?: { join?: Record<string, { timeline?: { events?: SyncEvent[] } }> } };
 		const textEvents: TextEvent[] = [];
-		for (const room of Object.values(body.rooms?.join ?? {})) {
+		for (const [joinedRoomId, room] of Object.entries(body.rooms?.join ?? {})) {
 			for (const event of room.timeline?.events ?? []) {
 				const id = event.event_id;
 				const text = typeof event.content?.body === "string" ? event.content.body : undefined;
 				if (id && text && event.type === "m.room.message" && event.content?.msgtype === "m.text" && event.sender) {
-					textEvents.push({ id, sender: event.sender, text });
+					textEvents.push({ id, sender: event.sender, text, room: joinedRoomId });
 				}
 			}
 		}

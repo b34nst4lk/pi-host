@@ -12,6 +12,7 @@ import { createRegistry, Harness, InboxDoc, MemoryStorage, type Submission } fro
 import {
 	createReplyPump,
 	extractAssistantTexts,
+	forRoom,
 	parseMatrixCommand,
 	pickNewEvents,
 	submitMatrixCommand,
@@ -236,6 +237,14 @@ describe("steer flow against a real harness", () => {
 	});
 });
 
+describe("forRoom (pi-spike as a plain user elsewhere must not steer)", () => {
+	it("accepts only events from the configured room forms", () => {
+		const accepted = new Set(["!room:jacks.im"]);
+		expect(forRoom({ id: "$1", sender: "@jacksim:jacks.im", text: "hi", room: "!room:jacks.im" }, accepted)).toBe(true);
+		expect(forRoom({ id: "$2", sender: "@jacksim:jacks.im", text: "hi", room: "!other:jacks.im" }, accepted)).toBe(false);
+	});
+});
+
 describe("Matrix client against a stub fetch", () => {
 	it("sends a message with the auth token and syncs with a since cursor", async () => {
 		const calls: Array<{ url: string; init?: RequestInit }> = [];
@@ -256,6 +265,13 @@ describe("Matrix client against a stub fetch", () => {
 										],
 									},
 								},
+								"!other:jacks.im": {
+									timeline: {
+										events: [
+											{ event_id: "$e3", type: "m.room.message", sender: "@jacksim:jacks.im", content: { msgtype: "m.text", body: "chat in another room" } },
+										],
+									},
+								},
 							},
 						},
 					}),
@@ -272,8 +288,9 @@ describe("Matrix client against a stub fetch", () => {
 		const batch = await client.sync("", 0);
 		expect(batch.nextBatch).toEqual("batch-2");
 		expect(batch.textEvents).toEqual([
-			{ id: "$e1", text: "hello bot", sender: "@jack:jacks.im" },
-			{ id: "$e2", text: "again", sender: "@jack:jacks.im" },
+			{ id: "$e1", text: "hello bot", sender: "@jack:jacks.im", room: "!room:jacks.im" },
+			{ id: "$e2", text: "again", sender: "@jack:jacks.im", room: "!room:jacks.im" },
+			{ id: "$e3", text: "chat in another room", sender: "@jacksim:jacks.im", room: "!other:jacks.im" },
 		]);
 		await client.sendText("!room:jacks.im", "hello back");
 		const sendCall = calls.find((call) => String(call.url).includes("/send/m.room.message"));

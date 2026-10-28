@@ -39,6 +39,7 @@ import { dirname } from "node:path";
 import { mkdirSync } from "node:fs";
 import {
 	createReplyPump,
+	forRoom,
 	pickNewEvents,
 	parseMatrixCommand,
 	submitMatrixCommand,
@@ -128,6 +129,13 @@ function allowed(sender: string): boolean {
 const seenEvents = new Set<string>();
 /** Submission ids still being awaited, for the /status line. */
 const pending = new Set<string>();
+/**
+ * pi-spike is a normal user of the wider setup and can be invited anywhere;
+ * only the configured room steers. `joined` is the homeserver-resolved room id
+ * (join returns it even for an #alias); env.room covers the literal form.
+ */
+const steeringRooms = new Set<string>([env.room]);
+if (joined !== undefined) steeringRooms.add(joined);
 
 function track(submission: { id: string; wait: (context: unknown) => Promise<unknown> }): void {
 	pending.add(submission.id);
@@ -138,6 +146,7 @@ function track(submission: { id: string; wait: (context: unknown) => Promise<unk
 }
 
 async function handleEvent(event: TextEvent): Promise<void> {
+	if (!forRoom(event, steeringRooms)) return; // other rooms: silently ignore (bot idles there as a plain user)
 	const { fresh } = pickNewEvents(seenEvents, [event]);
 	for (const freshEvent of fresh) {
 		if (!allowed(freshEvent.sender)) continue;
