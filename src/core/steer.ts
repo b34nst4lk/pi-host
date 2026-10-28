@@ -182,8 +182,11 @@ export function createReplyPump(deps: ReplyPumpDeps): (entries: readonly PumpEnt
 			}
 		}
 		if (delivered.size === 0) return;
-		const advancing = new Set<PumpId>();
-		for (const id of seen) if (delivered.has(id)) advancing.add(id);
+		// UNION with the loaded cursor, never replace: a replace drops previously
+		// delivered ids and the next tick re-sends those answers (the 2026-10-28
+		// room spam). Failed sends stay outside the union; they retry at-least-once.
+		const advancing = new Set<PumpId>(cursor);
+		for (const id of delivered) advancing.add(id);
 		await deps.saveCursor(advancing);
 	};
 }

@@ -154,6 +154,31 @@ describe("reply pump", () => {
 		expect([...saved[0]]).toEqual(["a"]);
 	});
 
+	it("delivers two answers across ticks without ever re-sending the first (replace-vs-union regression)", async () => {
+		const sent: string[] = [];
+		const saved: ReadonlySet<string>[] = [];
+		const deps = {
+			sendText: async (text: string) => {
+				sent.push(text);
+			},
+			loadCursor: async () => (saved.length === 0 ? new Set<string>() : saved[saved.length - 1]),
+			saveCursor: async (ids: ReadonlySet<string>) => {
+				saved.push(ids);
+			},
+		};
+		const pump = createReplyPump(deps);
+		const answerA = [{ id: "a", kind: "pi.assistant", model: [{ role: "assistant", content: [{ type: "text", text: "answer A" }] }] }];
+		const answerB = [{ id: "b", kind: "pi.assistant", model: [{ role: "assistant", content: [{ type: "text", text: "answer B" }] }] }];
+		await pump(answerA); // delivers A
+		expect(sent).toEqual(["answer A"]);
+		await pump([...answerA, ...answerB]); // delivers B; A must NOT re-send
+		expect(sent).toEqual(["answer A", "answer B"]);
+		await pump([...answerA, ...answerB]); // idle tick: nothing re-sends
+		expect(sent).toEqual(["answer A", "answer B"]);
+		// the persisted cursor must be the UNION (A survives B's save)
+		expect([...saved[saved.length - 1]].sort()).toEqual(["a", "b"]);
+	});
+
 	it("leaves a failed delivery outside the cursor; the next tick retries it", async () => {
 		const log: string[] = [];
 		const sent: string[] = [];
