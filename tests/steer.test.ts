@@ -75,18 +75,18 @@ describe("pickNewEvents", () => {
 	it("returns unseen events and grows the seen set", () => {
 		const empty = new Set<string>();
 		const first = pickNewEvents(empty, [
-			{ id: "$a", text: "one" },
-			{ id: "$b", text: "two" },
+			{ id: "$a", text: "one", sender: "@jack:jacks.im", room: "!r:jacks.im" },
+			{ id: "$b", text: "two", sender: "@jack:jacks.im", room: "!r:jacks.im" },
 		]);
 		expect(first.fresh).toEqual([
-			{ id: "$a", text: "one" },
-			{ id: "$b", text: "two" },
+			{ id: "$a", text: "one", sender: "@jack:jacks.im", room: "!r:jacks.im" },
+			{ id: "$b", text: "two", sender: "@jack:jacks.im", room: "!r:jacks.im" },
 		]);
 		const second = pickNewEvents(first.seen, [
-			{ id: "$a", text: "one" },
-			{ id: "$c", text: "three" },
+			{ id: "$a", text: "one", sender: "@jack:jacks.im", room: "!r:jacks.im" },
+			{ id: "$c", text: "three", sender: "@jack:jacks.im", room: "!r:jacks.im" },
 		]);
-		expect(second.fresh).toEqual([{ id: "$c", text: "three" }]);
+		expect(second.fresh).toEqual([{ id: "$c", text: "three", sender: "@jack:jacks.im", room: "!r:jacks.im" }]);
 	});
 });
 

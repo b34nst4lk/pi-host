@@ -16,6 +16,13 @@ export type OllamaCloudOptions = {
 };
 
 export function ollamaCloudProvider(options: OllamaCloudOptions) {
+	// Fail fast on drift: a misnamed field would otherwise build a provider whose
+	// model id is undefined, and every generation would fail `no_model` at boot
+	// distance instead of here, with a one-line message.
+	const missing = (["apiKey", "model", "baseUrl"] as const).filter((key) => !options[key]);
+	if (missing.length > 0) {
+		throw new Error(`ollamaCloudProvider: missing or empty option(s): ${missing.join(", ")}`);
+	}
 	return createProvider<"openai-completions">({
 		id: "ollama-cloud",
 		name: "Ollama Cloud",
@@ -40,6 +47,7 @@ export function ollamaCloudProvider(options: OllamaCloudOptions) {
 				provider: "ollama-cloud",
 				baseUrl: options.baseUrl,
 				input: ["text"],
+				reasoning: false,
 				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 				contextWindow: options.contextWindow,
 				maxTokens: options.maxTokens,

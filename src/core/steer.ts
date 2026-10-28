@@ -79,7 +79,9 @@ export function pickNewEvents(
 }
 
 /** The parts of a transcript entry the reply pump reads. Durable entry records carry `id`, `kind`, and optional `model`. */
-export type PumpEntry = { readonly id: string; readonly kind: string; readonly model?: readonly unknown[] | undefined };
+/** Durable entry ids are branded numbers or strings depending on storage; the pump treats them opaquely. */
+export type PumpId = string | number;
+export type PumpEntry = { readonly id: PumpId; readonly kind: string; readonly model?: readonly unknown[] | undefined };
 
 /**
  * Extract the unseen assistant entries as {id, text} pairs, oldest first, and
@@ -90,11 +92,11 @@ export type PumpEntry = { readonly id: string; readonly kind: string; readonly m
  * are retried on the next tick/boot.
  */
 export function extractAssistantTexts(
-	seen: ReadonlySet<string>,
+	seen: ReadonlySet<PumpId>,
 	entries: readonly PumpEntry[],
-): { items: Array<{ id: string; text: string }>; seen: Set<string> } {
-	const next = new Set(seen);
-	const items: Array<{ id: string; text: string }> = [];
+): { items: Array<{ id: PumpId; text: string }>; seen: Set<PumpId> } {
+	const next = new Set<PumpId>(seen);
+	const items: Array<{ id: PumpId; text: string }> = [];
 	for (const entry of entries) {
 		const fresh = !next.has(entry.id);
 		next.add(entry.id);
@@ -112,9 +114,9 @@ export type ReplyPumpDeps = {
 	/** Deliver one assistant text to the chat surface (the room). */
 	sendText(text: string): Promise<unknown>;
 	/** Load the durable set of entry ids already delivered. */
-	loadCursor(): Promise<ReadonlySet<string>>;
+	loadCursor(): Promise<ReadonlySet<PumpId>>;
 	/** Persist the advanced cursor (called only when something was delivered). */
-	saveCursor(ids: ReadonlySet<string>): Promise<void>;
+	saveCursor(ids: ReadonlySet<PumpId>): Promise<void>;
 	/** One-line logger for send failures; optional. */
 	log?: (message: string) => void;
 };
@@ -132,7 +134,7 @@ export function createReplyPump(deps: ReplyPumpDeps): (entries: readonly PumpEnt
 		const cursor = await deps.loadCursor();
 		const { items, seen } = extractAssistantTexts(cursor, entries);
 		if (items.length === 0) return;
-		const delivered = new Set<string>();
+		const delivered = new Set<PumpId>();
 		for (const item of items) {
 			try {
 				await deps.sendText(item.text);
@@ -142,7 +144,7 @@ export function createReplyPump(deps: ReplyPumpDeps): (entries: readonly PumpEnt
 			}
 		}
 		if (delivered.size === 0) return;
-		const advancing = new Set<string>();
+		const advancing = new Set<PumpId>();
 		for (const id of seen) if (delivered.has(id)) advancing.add(id);
 		await deps.saveCursor(advancing);
 	};

@@ -33,7 +33,7 @@
 //                            the spike's STEER_DB; durable ledger of the host)
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createModels } from "@earendil-works/pi-ai/models";
-import { defineDoc, Harness, InboxDoc } from "@earendil-works/pi-durable";
+import { defineDoc, Harness, InboxDoc, type Submission } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { dirname } from "node:path";
 import { mkdirSync } from "node:fs";
@@ -81,14 +81,28 @@ for (const requiredDir of [dirname(env.db)]) mkdirSync(requiredDir, { recursive:
 
 // --- durable side ---
 const models = createModels();
-models.setProvider(ollamaCloudProvider(env));
+// Explicit field mapping: env uses ollama*-prefixed names, OllamaCloudOptions
+// uses model/apiKey/baseUrl. Passing `env` whole once produced a provider whose
+// model id was undefined — every generation then failed `no_model` (found via
+// live ticker: models=[null]). tsc now rejects the whole-env call.
+models.setProvider(
+	ollamaCloudProvider({
+		apiKey: env.ollamaApiKey,
+		model: env.ollamaModel,
+		baseUrl: env.ollamaBaseUrl,
+		contextWindow: env.contextWindow,
+		maxTokens: env.maxTokens,
+	}),
+);
 const registry = createSteerRegistry();
 
 /** Durable replay cursor for the reply pump: entry ids already sent to the room. Kept capped. */
-const SteerCursor = defineDoc<{ ids: string[] }>({
+const SteerCursor = defineDoc<{ ids: Array<string | number> }>({
 	kind: "app.steer-cursor",
 	version: 1,
 	scope: "conversation",
+	history: "latest",
+	fork: "initial",
 	initial: () => ({ ids: [] }),
 });
 const CURSOR_CAP = 200;
@@ -128,7 +142,7 @@ function allowed(sender: string): boolean {
 
 const seenEvents = new Set<string>();
 /** Submission ids still being awaited, for the /status line. */
-const pending = new Set<string>();
+const pending = new Set<string | number>();
 /**
  * pi-spike is a normal user of the wider setup and can be invited anywhere;
  * only the configured room steers. `joined` is the homeserver-resolved room id
@@ -137,7 +151,7 @@ const pending = new Set<string>();
 const steeringRooms = new Set<string>([env.room]);
 if (joined !== undefined) steeringRooms.add(joined);
 
-function track(submission: { id: string; wait: (context: unknown) => Promise<unknown> }): void {
+function track(submission: Submission): void {
 	pending.add(submission.id);
 	void submission
 		.wait(context)
