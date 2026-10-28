@@ -16,6 +16,12 @@ export type MatrixClientOptions = {
 	readonly accessToken: string;
 	/** Cloudflare in front of the tunnel rejects UA-less clients (error 1010); undici sends none. */
 	readonly userAgent?: string;
+	/**
+	 * Watchdog headroom on top of the sync timeout: a long-poll that never
+	 * resolves (edge accepted the request then dropped it silently) must error
+	 * and retry, not hang the daemon forever. Default 15s.
+	 */
+	readonly watchdogSlackMs?: number;
 	readonly fetchImpl?: typeof fetch;
 };
 
@@ -49,10 +55,14 @@ export function createMatrixClient(options: MatrixClientOptions): MatrixClient {
 	async function sync(since: string, timeoutMs: number, signal?: AbortSignal): Promise<SyncBatch> {
 		const params = new URLSearchParams({ timeout: String(Math.max(0, timeoutMs | 0)) });
 		if (since.length > 0) params.set("since", since);
+		// Watchdog: if the fetch hangs past the long-poll window + slack (an edge
+		// that accepted the request then dropped it silently — the 2026-10-28
+		// freeze), treat it as an error so the daemon's retry loop takes over.
+		const watchdog = AbortSignal.timeout(timeoutMs + (options.watchdogSlackMs ?? 15_000));
 		const response = await doFetch(`${base}/_matrix/client/v3/sync?${params.toString()}`, {
 			method: "GET",
 			headers,
-			signal,
+			signal: signal ? AbortSignal.any([signal, watchdog]) : watchdog,
 		});
 		if (response.status === 401 || response.status === 404) {
 			throw new Error(`matrix sync rejected: HTTP ${response.status} (check MATRIX_ACCESS_TOKEN / homeserver)`);

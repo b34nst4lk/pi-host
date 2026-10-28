@@ -313,6 +313,25 @@ describe("classifySyncBatch (durable sync cursor + first-boot skip)", () => {
 	});
 });
 
+describe("sync watchdog (hung cloudflared long-poll must not stall the daemon)", () => {
+	it("rejects when the fetch hangs past the watchdog deadline", async () => {
+		const fetchImpl = (async (_url: string | URL | Request, init?: RequestInit) =>
+			// stub with undici-like abort behavior: the (watchdog) signal rejection must surface
+			new Promise<Response>((_resolve, reject) => {
+				init?.signal?.addEventListener("abort", () => reject(new Error("aborted by watchdog")));
+			})) as unknown as typeof fetch; // hangs forever
+		const client = createMatrixClient({
+			homeserver: "http://conduit:6167",
+			accessToken: "t",
+			watchdogSlackMs: 100,
+			fetchImpl,
+		});
+		const started = Date.now();
+		await expect(client.sync("", 0)).rejects.toThrow();
+		expect(Date.now() - started).toBeLessThan(5000);
+	});
+});
+
 describe("Matrix client against a stub fetch", () => {
 	it("sends a message with the auth token and syncs with a since cursor", async () => {
 		const calls: Array<{ url: string; init?: RequestInit }> = [];
