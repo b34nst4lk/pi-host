@@ -23,7 +23,6 @@ services:
     image: pi-host:runtime
     container_name: pi-host
     working_dir: /opt/pi-host
-    command: ["/opt/pi-host/scripts/run-container-daemon.sh"]
     # Same uid/gid as the host user, so storage/session.sqlite and workspace/
     # stay host-owned rather than root-owned.
     user: "1000:1000"
