@@ -1,6 +1,6 @@
 # pi-host daemon as a container — INTERIM deployment (no build).
 #
-# Deliberately `image: node:26-slim` + a bind mount of the repo tree instead of
+# Deliberately `image: pi-host:runtime` + a bind mount of the repo tree instead of
 # `build: ../docker/Dockerfile`: the agent's docker socket grants images:pull and
 # containers:*, but BUILD=403 is permanent, so a build-based compose file could
 # never be brought up from the sandbox. docker/Dockerfile documents the real
@@ -20,7 +20,7 @@
 #   docker logs -f --tail 50 pi-host   # wait for "harness up"
 services:
   pi-host:
-    image: node:26-slim
+    image: pi-host:runtime
     container_name: pi-host
     working_dir: /opt/pi-host
     command: ["/opt/pi-host/scripts/run-container-daemon.sh"]
