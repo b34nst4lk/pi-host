@@ -6,6 +6,7 @@
 // steer_core.ts; only the import specifiers differ.
 import type { Context } from "@earendil-works/chord";
 import type { Submission, SubmissionDraft } from "@earendil-works/pi-durable";
+import { USAGE_RANGES, type UsageRange } from "./ollama-format.ts";
 
 /** One recognized Matrix command. `content` carries text where an action needs it. */
 export type MatrixCommand =
@@ -13,7 +14,12 @@ export type MatrixCommand =
 	| { readonly action: "steer"; readonly content: string }
 	| { readonly action: "note"; readonly content: string }
 	| { readonly action: "stop" }
-	| { readonly action: "status" };
+	| { readonly action: "status" }
+	| { readonly action: "usage"; readonly range: UsageRange; readonly groupByModel: boolean }
+	| { readonly action: "usage-invalid"; readonly text: string }
+	| { readonly action: "balance" }
+	| { readonly action: "models" }
+	| { readonly action: "embed"; readonly content: string };
 
 /**
  * Map one chat message to a command.
@@ -34,7 +40,36 @@ export function parseMatrixCommand(text: string): MatrixCommand | null {
 	if (first === "/status") return { action: "status" };
 	if (first === "/steer") return rest.length > 0 ? { action: "steer", content: rest } : null;
 	if (first === "/note") return rest.length > 0 ? { action: "note", content: rest } : null;
+	if (first === "/balance") return { action: "balance" };
+	if (first === "/models") return { action: "models" };
+	if (first === "/embed") return rest.length > 0 ? { action: "embed", content: rest } : null;
+	if (first === "/usage") return parseUsage(rest);
 	return { action: "input", content: trimmed };
+}
+
+/** `/usage` with no argument asks about the last day; `models` turns on `group_by=model`. */
+const DEFAULT_USAGE_RANGE: UsageRange = "24h";
+
+/**
+ * `/usage [24h|7d|30d] [models]` — order-insensitive. An unrecognized token is
+ * reported back rather than guessed at: the daemon answers with the valid forms.
+ */
+function parseUsage(rest: string): MatrixCommand {
+	const tokens = rest.length === 0 ? [] : rest.split(/\s+/);
+	let range: UsageRange | undefined;
+	let groupByModel = false;
+	for (const token of tokens) {
+		const lowered = token.toLowerCase();
+		if (lowered === "models") {
+			groupByModel = true;
+			continue;
+		}
+		const named = USAGE_RANGES.find((candidate) => candidate === lowered);
+		if (named === undefined) return { action: "usage-invalid", text: token };
+		if (range !== undefined) return { action: "usage-invalid", text: token };
+		range = named;
+	}
+	return { action: "usage", range: range ?? DEFAULT_USAGE_RANGE, groupByModel };
 }
 
 /**
@@ -250,7 +285,12 @@ export async function submitMatrixCommand(
 			return root.submit({ type: "write", entry: { kind: "app.matrix-note", data: command.content } }, context);
 		case "stop":
 		case "status":
-			throw new Error(`submitMatrixCommand cannot place ${command.action}; the daemon handles controls itself`);
+		case "usage":
+		case "usage-invalid":
+		case "balance":
+		case "models":
+		case "embed":
+			throw new Error(`submitMatrixCommand cannot place ${command.action}; the daemon handles controls and Ollama queries itself`);
 	}
 }
 

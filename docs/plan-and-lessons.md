@@ -213,12 +213,13 @@ unit-tested.
 2. ~~Tools (`CodingTools`) + `NodeExecutionEnv` sandbox workspace~~ **DONE 2026-10-28** (`src/env.ts`, preamble updated).
 3. Live sequence: `/steer` mid-generation → `/status` → `/stop` — **DONE 2026-10-28** (steer verified on the tic-tac-toe run; stop ledger-verified: live run aborted, submission withdrawn `unanswered (aborted)`, no leak).
 4. ~~`kill -9` mid-generation with a live model~~ **DONE 2026-10-28** — audit-2 roadmap item closed on the real rig: task SIGKILLed at `phase=request`, daemon restarted, `resume()` restarted the interrupted generation from its committed checkpoint, and the run continued to completion (a multi-turn Gleam tic-tac-toe build). Compaction fired after nearly every tool round (756K in / 708K cacheRead / 105K out tokens for the session).
-5. Containerize the daemon on `home_server-network` (conduit DNS), tmpfs key
+5. ~~Ollama account APIs as room commands~~ **DONE 2026-10-28** (`/usage`, `/balance`, `/models`, `/embed`; `src/ollama_api.ts` + `src/core/ollama-format.ts`, 33 tests). Live reality differed from the docs in three ways worth remembering: this plan's `/api/usage` reports `request_count` only (no `usage_usd`, no token counters), `groups` are nested in `totals`/`buckets` rather than top-level, and `/api/balance` returns the legacy `session`/`weekly` percent shape. Formatters treat every metric as optional for that reason.
+6. Containerize the daemon on `home_server-network` (conduit DNS), tmpfs key
    chain in compose; systemd-style restart policy.
-6. Real tasks: `defineTask` builds in the workspace (background tasks,
+7. Real tasks: `defineTask` builds in the workspace (background tasks,
    `sleepUntil` scheduling) — the "build in the background" capability.
-7. Multi-project: project registry as session docs, one conversation per
+8. Multi-project: project registry as session docs, one conversation per
    project, per-project cwd/env — the workshop pattern
    (docker-socket-proxy Phase B is already live on the host).
-8. E2EE upgrade (matrix crypto stack) if encrypted-room steering is ever
+9. E2EE upgrade (matrix crypto stack) if encrypted-room steering is ever
    needed.

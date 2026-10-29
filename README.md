@@ -22,6 +22,9 @@ inside the durable package. Ownership split:
 src/
   core/steer.ts          pure steering logic: command map, sync dedupe, extractor,
                          submission placement, withdraw sweep, durable reply pump
+  core/ollama-format.ts  pure formatters for /usage, /balance, /models, /embed
+  ollama_api.ts          native Ollama endpoint wrappers (usage, balance, tags,
+                         embed) with injectable fetch
   surfaces/
     matrix-client.ts     thin CS-API client (raw HTTP, no SDK; injectable fetch)
   provider.ts            Ollama Cloud provider (mirrors the spike's ollama_driver.ts)
@@ -77,12 +80,39 @@ otherwise set `MATRIX_HOMESERVER` accordingly.
 | `OLLAMA_API_KEY` | required | model auth, env-staged like the spike |
 | `OLLAMA_MODEL` | `deepseek-v4.1-flash` | |
 | `OLLAMA_BASE_URL` | `https://ollama.com/v1` | |
+| `OLLAMA_EMBED_BASE_URL` | `http://127.0.0.1:11434` | embeddings server: the **local** Ollama (ollama.com serves no embedding models) |
+| `OLLAMA_EMBED_MODEL` | autodetected `*embed*` | embedding model on that server |
 | `PI_HOST_DB` | `./storage/session.sqlite` | durable ledger (renamed from spike `STEER_DB`) |
 | `PI_HOST_SANDBOX` | `./workspace` | agent workspace: cwd for its read/write/edit/bash tools |
 
 Commands in the room: plain text = follow-up · `/steer <text>` = steer the
 live run · `/stop` · `/status` · `/note <text>` (appends without asking the
 model) · plain chat text queues as a follow-up while busy.
+
+### Query commands
+
+Four commands answer straight from the Ollama APIs. Each makes **one** upstream
+call (that account endpoint is limited to 10 req/min per user, shared across
+keys), renders it with a pure formatter, and threads the reply onto the command.
+
+| command | endpoint | reply |
+|---|---|---|
+| `/usage [24h\|7d\|30d] [models]` | `GET /api/usage?range=…[&group_by=model]` | totals line, token line when the plan meters tokens, top 5 model groups, current bucket (marked `(partial)` while open) |
+| `/balance` | `GET /api/balance` | one line: included dollars + allowance period, or `session`/`weekly` percent left; plus purchased |
+| `/models` | `GET /api/tags` (no auth) | `name [capabilities]`, capped at 20 |
+| `/embed <text>` | `POST {OLLAMA_EMBED_BASE_URL}/api/embed` | model, dims, input count, eval count, first 4 vector values (never the whole vector) |
+
+- Every metric is optional in the types: this account's plan reports
+  `request_count` only, so the formatter prints no USD or token figures rather
+  than `$0.00`/`NaN`. Request counts stay exact; token counts compact
+  (`756000` → `756.0K`, `1570574` → `1.6M`).
+- `groups` are read from `totals.groups` (where the live API nests them) with the
+  documented top-level `groups` as a fallback. There is no `remainder` field.
+- `/usage 12h` is refused with the valid forms instead of guessing.
+- An embedding request needs a local model: with none installed the reply says
+  `no embedding model on … — run \`ollama pull embeddinggemma\` first` (no `❌`,
+  it is a state, not a failure). Any real API error replies `❌ <status: detail>`
+  and is logged.
 
 ## Receipt and threading
 

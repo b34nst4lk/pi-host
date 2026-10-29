@@ -12,6 +12,9 @@
 //     receipt while the model is still working,
 //   - threads every reply onto the message being answered (m.in_reply_to),
 //   - /stop aborts the conversation's ordinary work; /status reports queue state,
+//   - /usage, /balance, /models and /embed answer from the Ollama APIs (account
+//     spend, credit, the public model catalogue, and local embeddings) — one
+//     upstream call per command, threaded replies, failures reported not fatal,
 //   - pumps assistant messages from the watched transcript back into the room,
 //   - keeps a durable per-conversation cursor doc so a crash between "answer
 //     committed" and "reply sent" replays the reply (at least once) on boot,
@@ -32,6 +35,12 @@
 //   OLLAMA_MODEL             default deepseek-v4.1-flash
 //   OLLAMA_BASE_URL          default https://ollama.com/v1
 //   OLLAMA_CONTEXT_WINDOW    default 131072  (deepseek-v4.1-flash:cloud's real
+//                            window; the provider registry under-reports it, so
+//                            compaction and maxTokens are set from here)
+//   OLLAMA_EMBED_BASE_URL    default http://127.0.0.1:11434 — the LOCAL server:
+//                            ollama.com serves no embedding models at all
+//   OLLAMA_EMBED_MODEL       optional; otherwise the first installed *embed*
+//                            model on OLLAMA_EMBED_BASE_URL
 //                            card is 128K context / 16.4K out; the earlier
 //                            32768 default made compaction fire after nearly
 //                            every tool round, and a summarization call that
@@ -56,9 +65,12 @@ import {
 	parseMatrixCommand,
 	submitMatrixCommand,
 	type EventId,
+	type MatrixCommand,
 	type TextEvent,
 } from "./core/steer.ts";
 import { createMatrixClient } from "./surfaces/matrix-client.ts";
+import { createOllamaApi, NoEmbeddingModelError } from "./ollama_api.ts";
+import { formatBalance, formatEmbed, formatModels, formatUsage, USAGE_RANGES } from "./core/ollama-format.ts";
 import { createSteerRegistry } from "./extensions.ts";
 import { ollamaCloudProvider } from "./provider.ts";
 
@@ -77,6 +89,8 @@ const env = {
 	ollamaApiKey: process.env.OLLAMA_API_KEY ?? "",
 	ollamaModel: process.env.OLLAMA_MODEL ?? "deepseek-v4.1-flash",
 	ollamaBaseUrl: process.env.OLLAMA_BASE_URL ?? "https://ollama.com/v1",
+	ollamaEmbedBaseUrl: process.env.OLLAMA_EMBED_BASE_URL ?? "http://127.0.0.1:11434",
+	ollamaEmbedModel: process.env.OLLAMA_EMBED_MODEL ?? "",
 	contextWindow: Number(process.env.OLLAMA_CONTEXT_WINDOW ?? 131072),
 	maxTokens: Number(process.env.OLLAMA_MAX_TOKENS ?? 16384),
 	db: process.env.PI_HOST_DB ?? "./storage/session.sqlite",
@@ -164,6 +178,18 @@ if (joined === undefined) {
 	log(`joined ${joined}`);
 }
 
+/**
+ * The Ollama query clients the /usage, /balance, /models and /embed commands use.
+ * Separate from the model provider on purpose: the provider talks an
+ * OpenAI-compatible chat API, these are the native account and embed endpoints.
+ */
+const ollamaApi = createOllamaApi({
+	apiKey: env.ollamaApiKey,
+	baseUrl: env.ollamaBaseUrl,
+	embedBaseUrl: env.ollamaEmbedBaseUrl,
+	embedModel: env.ollamaEmbedModel,
+});
+
 /** Allowed steerers; anything else is logged once per message and ignored. */
 function allowed(sender: string): boolean {
 	if (env.allowedUsers.includes(sender)) return true;
@@ -195,6 +221,57 @@ function track(submission: Submission): void {
 		.wait(context)
 		.catch((error: unknown) => log(`submission ${submission.id} wait ended: ${error instanceof Error ? error.message : error}`))
 		.finally(() => pending.delete(submission.id));
+}
+
+/** Send one threaded control reply. A failed send is logged, never fatal. */
+async function reply(text: string, replyTo: EventId): Promise<void> {
+	try {
+		await client.sendText(env.room, text, replyTo);
+	} catch (error) {
+		log(`control reply failed: ${error instanceof Error ? error.message : error}`);
+	}
+}
+
+const OLLAMA_ACTIONS = new Set(["usage", "usage-invalid", "balance", "models", "embed"]);
+
+/**
+ * Answer one Ollama query command. Exactly one upstream call per command —
+ * /api/usage and /api/balance are limited to 10 req/min per user across keys, so
+ * these are never polled or retried in a loop. Rendering is pure
+ * (core/ollama-format.ts). A local server without an embedding model is a state
+ * to report plainly, not an API failure, so it answers without the ❌.
+ */
+async function answerOllamaCommand(command: MatrixCommand, replyTo: EventId): Promise<void> {
+	if (command.action === "usage-invalid") {
+		await reply(`unknown /usage argument "${command.text}" — /usage [${USAGE_RANGES.join("|")}] [models]`, replyTo);
+		return;
+	}
+	try {
+		switch (command.action) {
+			case "usage":
+				await reply(formatUsage(await ollamaApi.usage(command.range, command.groupByModel)).join("\n"), replyTo);
+				return;
+			case "balance":
+				await reply(formatBalance(await ollamaApi.balance()), replyTo);
+				return;
+			case "models":
+				await reply(formatModels(await ollamaApi.tags()).join("\n"), replyTo);
+				return;
+			case "embed":
+				await reply(formatEmbed(await ollamaApi.embed(command.content), 1), replyTo);
+				return;
+			default:
+				return;
+		}
+	} catch (error) {
+		if (error instanceof NoEmbeddingModelError) {
+			await reply(error.message, replyTo);
+			return;
+		}
+		const message = error instanceof Error ? error.message : String(error);
+		log(`${command.action} failed: ${message}`);
+		await reply(`❌ ${message}`, replyTo);
+	}
 }
 
 async function handleEvent(event: TextEvent): Promise<void> {
@@ -229,6 +306,12 @@ async function handleEvent(event: TextEvent): Promise<void> {
 			} catch (error) {
 				log(`sendText after /status failed: ${error instanceof Error ? error.message : error}`);
 			}
+			continue;
+		}
+		if (OLLAMA_ACTIONS.has(command.action)) {
+			// Not awaited: an upstream timeout must not stall the sync loop. The
+			// helper never throws, it replies (threaded) whatever happens.
+			void answerOllamaCommand(command, freshEvent.id);
 			continue;
 		}
 		const submission = await submitMatrixCommand(root, command, context);
