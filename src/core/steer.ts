@@ -37,6 +37,36 @@ export function parseMatrixCommand(text: string): MatrixCommand | null {
 	return { action: "input", content: trimmed };
 }
 
+/**
+ * The reaction the agent emotes on every accepted inbound message: a receipt
+ * the room can see, sent before the (possibly slow) model work starts.
+ */
+export const ACK_REACTION = "👀";
+
+/** A Matrix event id (`$...`). Branded as a plain string; kept named for readability. */
+export type EventId = string;
+
+/**
+ * Reaction event content: an `m.annotation` relation onto `eventId`. Homeservers
+ * key a reaction by (event, key, sender), so re-acking the same message is
+ * idempotent — a redelivered sync batch cannot stack 👀s.
+ */
+export function reactionContent(eventId: EventId, key: string = ACK_REACTION) {
+	return {
+		"m.relates_to": { rel_type: "m.annotation", event_id: eventId, key },
+	};
+}
+
+/**
+ * Message event content, optionally threaded onto the message being answered.
+ * `m.in_reply_to` is the modern relation (clients render the quote themselves);
+ * clients that predate it still show a plain message, so nothing breaks.
+ */
+export function replyContent(body: string, replyTo: EventId | null) {
+	if (replyTo === null) return { msgtype: "m.text", body };
+	return { msgtype: "m.text", body, "m.relates_to": { "m.in_reply_to": { event_id: replyTo } } };
+}
+
 /** A text event as seen from a Matrix sync: id, sender, and the plain body. */
 export type TextEvent = {
 	readonly id: string;
@@ -149,8 +179,14 @@ export function extractAssistantTexts(
 
 /** Dependencies of the durable reply pump; all injected, so tests run against fakes. */
 export type ReplyPumpDeps = {
-	/** Deliver one assistant text to the chat surface (the room). */
-	sendText(text: string): Promise<unknown>;
+	/** Deliver one assistant text to the chat surface (the room), threaded onto `replyTo` when given. */
+	sendText(text: string, replyTo: EventId | null): Promise<unknown>;
+	/**
+	 * The inbound message the next reply should quote: the newest accepted
+	 * message the agent is answering. Read per delivery, so a reply that lands
+	 * after a newer message quotes the newer one instead of a stale id.
+	 */
+	replyTarget?: () => EventId | null;
 	/** Load the durable set of entry ids already delivered. */
 	loadCursor(): Promise<ReadonlySet<PumpId>>;
 	/** Persist the advanced cursor (called only when something was delivered). */
@@ -175,7 +211,7 @@ export function createReplyPump(deps: ReplyPumpDeps): (entries: readonly PumpEnt
 		const delivered = new Set<PumpId>();
 		for (const item of items) {
 			try {
-				await deps.sendText(item.text);
+				await deps.sendText(item.text, deps.replyTarget?.() ?? null);
 				delivered.add(item.id);
 			} catch (error) {
 				log(`reply not delivered (entry ${item.id} stays outside the cursor; retried on next tick/boot): ${error instanceof Error ? error.message : error}`);

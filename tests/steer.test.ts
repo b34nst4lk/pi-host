@@ -16,6 +16,8 @@ import {
 	forRoom,
 	parseMatrixCommand,
 	pickNewEvents,
+	reactionContent,
+	replyContent,
 	submitMatrixCommand,
 	SYNC_SEEN_CAP,
 	withdrawSubmissions,
@@ -385,5 +387,95 @@ describe("Matrix client against a stub fetch", () => {
 		expect(JSON.stringify(sendCall?.init?.body)).toContain("hello back");
 		expect(JSON.stringify(sendCall?.init?.headers)).toContain("Bearer syt_token");
 		expect(JSON.stringify(sendCall?.init?.headers)).toContain("pi-host/0.1"); // CF rejects UA-less clients
+	});
+});
+describe("ack reaction (👀 receipt) and reply threading", () => {
+	it("emotes 👀 onto the message it received", () => {
+		expect(reactionContent("$e1")).toEqual({
+			"m.relates_to": { rel_type: "m.annotation", event_id: "$e1", key: "👀" },
+		});
+	});
+
+	it("threads a reply onto the answered message", () => {
+		expect(replyContent("working on it", "$ask")).toEqual({
+			msgtype: "m.text",
+			body: "working on it",
+			"m.relates_to": { "m.in_reply_to": { event_id: "$ask" } },
+		});
+	});
+
+	it("sends a bare message when there is nothing to quote", () => {
+		expect(replyContent("working on it", null)).toEqual({ msgtype: "m.text", body: "working on it" });
+	});
+});
+
+describe("reply pump: every answer quotes the message being answered", () => {
+	const assistant = (id: string, text: string) => ({ id, kind: "pi.assistant", model: [{ role: "assistant", content: [{ type: "text", text }] }] });
+
+	it("reads the target per delivery, so a late answer quotes the newest message", async () => {
+		const sent: Array<{ text: string; replyTo: string | null }> = [];
+		let target: string | null = "$first";
+		let cursor = new Set<string>();
+		const pump = createReplyPump({
+			sendText: async (text, replyTo) => {
+				sent.push({ text, replyTo });
+			},
+			replyTarget: () => target,
+			loadCursor: async () => cursor,
+			saveCursor: async (ids) => {
+				cursor = new Set(ids) as Set<string>;
+			},
+		});
+		await pump([assistant("a", "answer A")]);
+		target = "$second";
+		await pump([assistant("a", "answer A"), assistant("b", "answer B")]);
+		expect(sent).toEqual([
+			{ text: "answer A", replyTo: "$first" },
+			{ text: "answer B", replyTo: "$second" },
+		]);
+	});
+
+	it("delivers unthreaded when no target has been recorded", async () => {
+		const sent: Array<string | null> = [];
+		const pump = createReplyPump({
+			sendText: async (_text, replyTo) => {
+				sent.push(replyTo);
+			},
+			loadCursor: async () => new Set<string>(),
+			saveCursor: async () => {},
+		});
+		await pump([assistant("a", "answer A")]);
+		expect(sent).toEqual([null]);
+	});
+});
+
+describe("Matrix client: reactions and threaded sends", () => {
+	const calls: Array<{ url: string; init?: RequestInit }> = [];
+	const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
+		calls.push({ url: String(url), init });
+		return new Response(JSON.stringify({ event_id: "$out" }), { status: 200, headers: { "content-type": "application/json" } });
+	}) as typeof fetch;
+
+	it("reactions go to /send/m.reaction with an m.annotation relation", async () => {
+		const client = createMatrixClient({ homeserver: "http://conduit:6167", accessToken: "syt_token", fetchImpl });
+		await client.sendReaction("!room:jacks.im", "$e1");
+		const call = calls.find((entry) => entry.url.includes("/send/m.reaction"));
+		expect(call?.init?.method).toEqual("PUT");
+		expect(JSON.parse(String(call?.init?.body))).toEqual({
+			"m.relates_to": { rel_type: "m.annotation", event_id: "$e1", key: "👀" },
+		});
+	});
+
+	it("a threaded send carries m.in_reply_to; an unthreaded one does not", async () => {
+		const client = createMatrixClient({ homeserver: "http://conduit:6167", accessToken: "syt_token", fetchImpl });
+		await client.sendText("!room:jacks.im", "quoted", "$e1");
+		await client.sendText("!room:jacks.im", "plain");
+		const sends = calls.filter((entry) => entry.url.includes("/send/m.room.message"));
+		expect(JSON.parse(String(sends[0]?.init?.body))).toEqual({
+			msgtype: "m.text",
+			body: "quoted",
+			"m.relates_to": { "m.in_reply_to": { event_id: "$e1" } },
+		});
+		expect(JSON.parse(String(sends[1]?.init?.body))).toEqual({ msgtype: "m.text", body: "plain" });
 	});
 });

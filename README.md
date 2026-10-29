@@ -84,6 +84,24 @@ Commands in the room: plain text = follow-up · `/steer <text>` = steer the
 live run · `/stop` · `/status` · `/note <text>` (appends without asking the
 model) · plain chat text queues as a follow-up while busy.
 
+## Receipt and threading
+
+- **👀 on every accepted message.** `handleEvent` reacts (`m.annotation`,
+  key `👀`) as soon as an allowed message is read, before the model is asked
+  anything — the room sees receipt while the run is still working. A failed
+  reaction is logged and dropped, never fatal: the message still steers. The
+  homeserver keys reactions by (event, key, sender), so a redelivered sync
+  batch cannot stack a second 👀.
+- **Replies quote the message being answered.** The pump sends every answer
+  with `m.relates_to.m.in_reply_to.event_id` set to the newest accepted
+  inbound message (`lastInbound` in `src/daemon.ts`), read *at send time*, so a
+  slow answer quotes the latest message rather than a stale id. `/stop` and
+  `/status` replies quote the command that triggered them.
+
+Both shapes are pure functions in `src/core/steer.ts` (`reactionContent`,
+`replyContent`) and covered by tests, so the wire format can be checked without
+a homeserver.
+
 ## Provenance & proven rules
 
 - Migrated from `~/hermes-users/jacksim/workspace/pi-durable-spike/`

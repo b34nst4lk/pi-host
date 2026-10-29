@@ -6,7 +6,7 @@
 // v0 deliberately has NO encryption support: join a non-encrypted room. E2EE
 // (matrix-sdk-crypto-native bindings) is a later upgrade, per the pi-courier
 // FAQ note that bot accounts without cross-signing fight encryption.
-import type { TextEvent } from "../core/steer.ts";
+import { ACK_REACTION, reactionContent, replyContent, type EventId, type TextEvent } from "../core/steer.ts";
 
 /** Homeservers reject events above 4000 body chars; clamp well below with a marker. */
 const MAX_BODY_CHARS = 3000;
@@ -38,8 +38,10 @@ export type SyncBatch = { readonly nextBatch: string; readonly textEvents: TextE
 export type MatrixClient = {
 	/** Long-poll one sync batch. `since: ""` starts a new cursor. `timeoutMs: 0` returns immediately. */
 	sync(since: string, timeoutMs: number, signal?: AbortSignal): Promise<SyncBatch>;
-	/** Send one text message to a room; returns the event id. */
-	sendText(roomId: string, text: string): Promise<string>;
+	/** Send one text message to a room; returns the event id. `replyTo` threads it onto that message. */
+	sendText(roomId: string, text: string, replyTo?: EventId | null): Promise<string>;
+	/** Emote on one message (default 👀 receipt); returns the reaction event id. */
+	sendReaction(roomId: string, eventId: EventId, key?: string): Promise<string>;
 	/** Join a room once (idempotent on the homeserver for a joined member). */
 	joinRoom(roomIdOrAlias: string): Promise<string | undefined>;
 };
@@ -82,7 +84,7 @@ export function createMatrixClient(options: MatrixClientOptions): MatrixClient {
 		return { nextBatch: body.next_batch ?? since, textEvents };
 	}
 
-	async function sendText(roomId: string, text: string): Promise<string> {
+	async function sendText(roomId: string, text: string, replyTo: EventId | null = null): Promise<string> {
 		const clamped =
 			text.length > MAX_BODY_CHARS
 				? `${text.slice(0, MAX_BODY_CHARS)}\n…(clamped at ${MAX_BODY_CHARS} chars; homeserver limit is ~4000)`
@@ -90,9 +92,28 @@ export function createMatrixClient(options: MatrixClientOptions): MatrixClient {
 		const txn = `steer-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 		const response = await doFetch(
 			`${base}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${encodeURIComponent(txn)}`,
-			{ method: "PUT", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify({ msgtype: "m.text", body: clamped }) },
+			{
+				method: "PUT",
+				headers: { ...headers, "content-type": "application/json" },
+				body: JSON.stringify(replyContent(clamped, replyTo)),
+			},
 		);
 		if (!response.ok) throw new Error(`matrix send failed: HTTP ${response.status}`);
+		const body = (await response.json()) as { event_id?: string };
+		return body.event_id ?? "";
+	}
+
+	async function sendReaction(roomId: string, eventId: EventId, key: string = ACK_REACTION): Promise<string> {
+		const txn = `react-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+		const response = await doFetch(
+			`${base}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.reaction/${encodeURIComponent(txn)}`,
+			{
+				method: "PUT",
+				headers: { ...headers, "content-type": "application/json" },
+				body: JSON.stringify(reactionContent(eventId, key)),
+			},
+		);
+		if (!response.ok) throw new Error(`matrix reaction failed: HTTP ${response.status}`);
 		const body = (await response.json()) as { event_id?: string };
 		return body.event_id ?? "";
 	}
@@ -110,5 +131,5 @@ export function createMatrixClient(options: MatrixClientOptions): MatrixClient {
 		return undefined;
 	}
 
-	return { sync, sendText, joinRoom };
+	return { sync, sendText, sendReaction, joinRoom };
 }

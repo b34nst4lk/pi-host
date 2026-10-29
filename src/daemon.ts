@@ -8,6 +8,9 @@
 //     architecture as Hermes's Python matrix adapter),
 //   - maps messages into durable submissions (core/steer.ts: plain text =
 //     follow-up, /steer joins the live run, /note appends silently),
+//   - emotes 👀 on every accepted message as soon as it is read, so the room sees
+//     receipt while the model is still working,
+//   - threads every reply onto the message being answered (m.in_reply_to),
 //   - /stop aborts the conversation's ordinary work; /status reports queue state,
 //   - pumps assistant messages from the watched transcript back into the room,
 //   - keeps a durable per-conversation cursor doc so a crash between "answer
@@ -45,12 +48,14 @@ import { dirname } from "node:path";
 import { mkdirSync } from "node:fs";
 import { createAgentEnv } from "./env.ts";
 import {
+	ACK_REACTION,
 	classifySyncBatch,
 	createReplyPump,
 	forRoom,
 	pickNewEvents,
 	parseMatrixCommand,
 	submitMatrixCommand,
+	type EventId,
 	type TextEvent,
 } from "./core/steer.ts";
 import { createMatrixClient } from "./surfaces/matrix-client.ts";
@@ -167,6 +172,13 @@ function allowed(sender: string): boolean {
 }
 
 const seenEvents = new Set<string>();
+/**
+ * The newest accepted inbound message. Every reply threads onto it
+ * (`m.relates_to.m.in_reply_to`), so the room shows what is being answered even
+ * when the model takes a while. Read at send time: a late reply quotes the newest
+ * message rather than a stale id.
+ */
+let lastInbound: EventId | null = null;
 /** Submission ids still being awaited, for the /status line. */
 const pending = new Set<string | number>();
 /**
@@ -190,12 +202,21 @@ async function handleEvent(event: TextEvent): Promise<void> {
 	const { fresh } = pickNewEvents(seenEvents, [event]);
 	for (const freshEvent of fresh) {
 		if (!allowed(freshEvent.sender)) continue;
+		lastInbound = freshEvent.id;
+		// Receipt first: the 👀 lands while the model is still thinking. A failed
+		// reaction must never cost us the message, so it is logged and dropped;
+		// the reaction is idempotent per (event, key, sender) on the homeserver.
+		try {
+			await client.sendReaction(env.room, freshEvent.id, ACK_REACTION);
+		} catch (error) {
+			log(`ack reaction failed (message still steers): ${error instanceof Error ? error.message : error}`);
+		}
 		const command = parseMatrixCommand(freshEvent.text);
 		if (command === null) continue;
 		if (command.action === "stop") {
 			await root.abort(context); // withdraws queued inputs and marks live tasks; background work is left alone
 			try {
-				await client.sendText(env.room, `stopped (queued withdrawn; pending before stop: ${pending.size})`);
+				await client.sendText(env.room, `stopped (queued withdrawn; pending before stop: ${pending.size})`, freshEvent.id);
 			} catch (error) {
 				log(`sendText after /stop failed: ${error instanceof Error ? error.message : error}`);
 			}
@@ -204,7 +225,7 @@ async function handleEvent(event: TextEvent): Promise<void> {
 		if (command.action === "status") {
 			const inbox = await harness.snapshot(InboxDoc, root.id, context);
 			try {
-				await client.sendText(env.room, `status: ${pending.size} settled-or-running, inbox ${inbox?.items.length ?? 0} queued`);
+				await client.sendText(env.room, `status: ${pending.size} settled-or-running, inbox ${inbox?.items.length ?? 0} queued`, freshEvent.id);
 			} catch (error) {
 				log(`sendText after /status failed: ${error instanceof Error ? error.message : error}`);
 			}
@@ -220,7 +241,8 @@ async function handleEvent(event: TextEvent): Promise<void> {
 // failed send leaves its entry outside the cursor and is retried by the next
 // watch tick or at the next boot (at-least-once; the cursor doc is the whole state).
 const pump = createReplyPump({
-	sendText: (text) => client.sendText(env.room, text),
+	sendText: (text, replyTo) => client.sendText(env.room, text, replyTo),
+	replyTarget: () => lastInbound,
 	loadCursor: async () => new Set((await harness.snapshot(SteerCursor, root.id, context))?.ids ?? []),
 	saveCursor: async (ids) => {
 		await root.commit(async (tx) => {
