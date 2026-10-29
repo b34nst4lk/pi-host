@@ -1,0 +1,10 @@
+# Build context for docker/Dockerfile. Keeps the host's node_modules from
+# clobbering the freshly-installed `npm ci` layer, and the durable ledger,
+# debug archives, and agent sandbox out of any image.
+node_modules/
+storage/
+workspace/
+dist/
+*.log
+.env
+.git/

@@ -1,0 +1,63 @@
+# pi-host daemon as a container — INTERIM deployment (no build).
+#
+# Deliberately `image: node:26-slim` + a bind mount of the repo tree instead of
+# `build: ../docker/Dockerfile`: the agent's docker socket grants images:pull and
+# containers:*, but BUILD=403 is permanent, so a build-based compose file could
+# never be brought up from the sandbox. docker/Dockerfile documents the real
+# build path for a host session that holds BUILD.
+#
+# Probed from this socket before writing (see docs/plan-and-lessons.md):
+#   - node:26-slim pulls ✓ and runs the tree's tsx v4.23.15 on node v26.13.0 ✓
+#     (vitest: 33/33 green inside the container, so 26-slim needs no 22 fallback)
+#   - a container on home_server_home_server-network resolves `conduit:6167` ✓
+#     (`/_matrix/client/versions` → latest v1.12)
+#   - uid/gid 1000 matches the host user inside the image's `node` user ✓
+#   - /dev/shm/pi-host binds read-only at /run/secrets, 0600, sizes 32/59 ✓
+#
+# Cutover (host session, not the agent):
+#   kill -TERM "$(pgrep -f 'tsx src/daemon.ts')"   # then confirm it is gone
+#   docker compose -f deploy/docker-compose.yml up -d
+#   docker logs -f --tail 50 pi-host   # wait for "harness up"
+services:
+  pi-host:
+    image: node:26-slim
+    container_name: pi-host
+    working_dir: /opt/pi-host
+    command: ["/opt/pi-host/scripts/run-container-daemon.sh"]
+    # Same uid/gid as the host user, so storage/session.sqlite and workspace/
+    # stay host-owned rather than root-owned.
+    user: "1000:1000"
+    restart: unless-stopped
+    # The durable ledger commits every step, but give the model call time to
+    # settle before SIGKILL; resume() replays anything interrupted anyway.
+    stop_grace_period: 30s
+    environment:
+      # network alias inside home_server_home_server-network: no Cloudflare hop
+      MATRIX_HOMESERVER: http://conduit:6167
+      MATRIX_ROOM: "!ig3PmgqC-rUdJMNvo6sfPHRtUlIMaeU8XqidpXpufmU"
+      MATRIX_ALLOWED_USERS: "@jacksim:jacks.im"
+      PI_HOST_DB: /opt/pi-host/storage/session.sqlite
+      PI_HOST_SANDBOX: /opt/pi-host/workspace
+      OLLAMA_MODEL: deepseek-v4.1-flash
+      OLLAMA_BASE_URL: https://ollama.com/v1
+      # Embeddings stay on the local Ollama, reached through the host gateway.
+      # KNOWN GAP: host Ollama binds 127.0.0.1:11434 only, so /embed answers
+      # "request failed" from inside the container until it listens on 0.0.0.0
+      # (OLLAMA_HOST=0.0.0.0:11434) or runs on this network as a service.
+      OLLAMA_EMBED_BASE_URL: http://host.docker.internal:11434
+      NODE_OPTIONS: --dns-result-order=ipv4first
+      # NOT here, ever: MATRIX_ACCESS_TOKEN / OLLAMA_API_KEY. Secrets ride the
+      # read-only bind mount below; compose `environment:` shows in docker inspect.
+    volumes:
+      # The repo tree: source, node_modules, and the durable ledger + workspace.
+      - /home/jacksim/hermes-users/jacksim/workspace/pi-host:/opt/pi-host
+      # Host tmpfs, read-only: nothing secret ever lands on disk.
+      - /dev/shm/pi-host:/run/secrets:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - home_server_home_server-network
+
+networks:
+  home_server_home_server-network:
+    external: true

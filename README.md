@@ -69,6 +69,69 @@ The daemon needs to reach the homeserver: from this shell that means the
 conduit DNS name only exists inside docker (`http://conduit:6167` default);
 otherwise set `MATRIX_HOMESERVER` accordingly.
 
+## Container deployment (interim: no build)
+
+Three files, plus the documented build path (a fourth file, the build path itself):
+
+| file | role |
+|---|---|
+| `deploy/docker-compose.yml` | the deployment: `image: node:26-slim`, repo tree bind-mounted at `/opt/pi-host`, host tmpfs bind-mounted **read-only** at `/run/secrets`, `network: home_server_home_server-network`, `user: "1000:1000"`, `restart: unless-stopped` |
+| `scripts/run-container-daemon.sh` | in-container entrypoint: preflights `/run/secrets/{matrix_token,ollama_key}` (non-empty, never printed), exports room/users/homeserver/db, `exec`s `tsx src/daemon.ts` |
+| `docker/Dockerfile` | the real build path (`npm ci` after `COPY vendor`, since the earendil deps are local tarballs), kept for a host session that holds `BUILD` |
+
+**Why no build in the compose file.** The agent's docker socket grants
+`images:pull` and `containers:*` but `BUILD=403` is permanent, so a build-based
+compose file could never be brought up from the sandbox. The interim deployment
+is therefore a pre-pulled `node:26-slim` plus a bind mount: `node_modules` and
+`src/` come from the host tree, so there is nothing to build.
+
+**Inside the network the homeserver default becomes correct.** `MATRIX_HOMESERVER`
+is `http://conduit:6167` — the network alias — so containerized steering takes no
+Cloudflare hop. (From the host shell that name does not resolve at all; the host
+runner needs the public origin instead.)
+
+**Secrets.** `/dev/shm/pi-host` is a real host tmpfs and is bind-mounted
+read-only at `/run/secrets`; the entrypoint reads the two files into the
+environment and unsets them on exit. Nothing secret is ever an `ARG`, an `ENV`,
+an `-e` value or an argv element — `docker inspect` shows env, and that was the
+leak pattern flagged in the earlier loopback investigation.
+
+### Cutover (host session — the agent does not run it)
+
+```bash
+# 1. stop the host daemon: exactly one process may own the SQLite storage.
+#    TERM (never KILL) lets the live run settle; the ledger replays anything
+#    committed but unsent.
+kill -TERM "$(pgrep -f 'tsx src/daemon.ts')"
+sleep 5 && (pgrep -f 'tsx src/daemon.ts' && echo "STILL UP — do not start the container") || echo "host daemon down"
+
+# 2. bring the container up from the repo root
+docker compose -f deploy/docker-compose.yml up -d
+
+# 3. watch for the marker that means the ledger opened and sync resumed
+docker logs -f --tail 50 pi-host     # wait for "harness up: db=/opt/pi-host/storage/session.sqlite ..."
+```
+
+Rollback is symmetric: `docker compose -f deploy/docker-compose.yml down`, then
+`scripts/run-host-daemon.sh '<room>' '<users>'`.
+
+### Verified before hand-down (probe containers, all `--rm`)
+
+- `docker pull node:26-slim` — pulls from this socket.
+- Fresh container on `home_server_home_server-network`:
+  `GET http://conduit:6167/_matrix/client/versions` → `OK v1.12`.
+- Repo tree at `/home/jacksim/hermes-users/jacksim/workspace/pi-host` mounts at
+  `/opt/pi-host`; `node_modules/.bin/tsx` runs `src/` (imported
+  `core/steer.ts`, `parseMatrixCommand('/usage 7d models')` returned the expected
+  object) on **node v26.13.0** with tsx v4.23.15, and `vitest --run` passed 33/33
+  inside the container — so `node:26-slim` needs no `node:22-slim` fallback.
+- `/dev/shm/pi-host:/run/secrets:ro` shows `matrix_token` (32 B) and `ollama_key`
+  (59 B), both `0600`, readable at uid 1000.
+- Known gap: host Ollama binds `127.0.0.1:11434` only, so `/embed` fails from
+  inside the container (`host.docker.internal:11434` → connect timeout) until it
+  listens on `0.0.0.0` or joins that network. The other three query commands use
+  ollama.com and are unaffected.
+
 ## Env contract
 
 | variable | default | meaning |
