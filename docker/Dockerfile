@@ -10,6 +10,14 @@
 # runtime contract (workdir, deps, user, entrypoint) is written down once.
 FROM node:26-slim
 
+# git: the subagent system's worktrees are created by the daemon calling git
+# from inside the container; the slim image ships none. ca-certificates: node
+# fetches (matrix + ollama) over HTTPS through the TLS stack, which loads the
+# system trust store.
+RUN apt-get update \
+	&& apt-get install -y --no-install-recommends git ca-certificates \
+	&& rm -rf /var/lib/apt/lists/*
+
 WORKDIR /opt/pi-host
 
 # vendor/ must come in BEFORE the install: every @earendil-works dependency is a
