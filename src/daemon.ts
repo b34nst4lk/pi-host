@@ -70,6 +70,7 @@ import {
 } from "./core/steer.ts";
 import { createMatrixClient } from "./surfaces/matrix-client.ts";
 import { createOllamaApi, NoEmbeddingModelError } from "./ollama_api.ts";
+import { envGit, createSubagents } from "./subagents.ts";
 import { formatBalance, formatEmbed, formatModels, formatUsage, USAGE_RANGES } from "./core/ollama-format.ts";
 import { createSteerRegistry } from "./extensions.ts";
 import { ollamaCloudProvider } from "./provider.ts";
@@ -122,7 +123,21 @@ models.setProvider(
 		maxTokens: env.maxTokens,
 	}),
 );
-const registry = createSteerRegistry();
+// --- Matrix surface (needed by the subagent host before the registry) ---
+const client = createMatrixClient({ homeserver: env.homeserver, accessToken: env.accessToken });
+/** The newest accepted inbound message; replies thread onto it (read at send time). */
+let lastInbound: EventId | null = null;
+
+/** The subagent runtime: named persistent children in their own worktrees. */
+const subagents = createSubagents({
+	provider: "ollama-cloud",
+	model: process.env.SUBAGENT_MODEL ?? "glm-5.3-flash",
+	maxTurns: Number(process.env.SUBAGENT_MAX_TURNS ?? 40),
+	git: (args, cwd, execEnv, contextArg) => envGit(args, cwd, execEnv, contextArg),
+	roomPost: (text: string) => client.sendText(env.room, text, lastInbound),
+	log: (message: string) => log(`[subagent] ${message}`),
+});
+const registry = createSteerRegistry(subagents);
 
 /** Durable replay cursor for the reply pump: entry ids already sent to the room. Kept capped. */
 const SteerCursor = defineDoc<{ ids: Array<string | number> }>({
@@ -163,7 +178,6 @@ harness.resume(); // interrupted inputs stay pending; queued work restarts
 log(`harness up: db=${env.db} conversation=${root.id} model=${env.ollamaModel}`);
 
 // --- Matrix side ---
-const client = createMatrixClient({ homeserver: env.homeserver, accessToken: env.accessToken });
 let joined: string | undefined;
 try {
 	joined = await client.joinRoom(env.room);
@@ -198,13 +212,6 @@ function allowed(sender: string): boolean {
 }
 
 const seenEvents = new Set<string>();
-/**
- * The newest accepted inbound message. Every reply threads onto it
- * (`m.relates_to.m.in_reply_to`), so the room shows what is being answered even
- * when the model takes a while. Read at send time: a late reply quotes the newest
- * message rather than a stale id.
- */
-let lastInbound: EventId | null = null;
 /** Submission ids still being awaited, for the /status line. */
 const pending = new Set<string | number>();
 /**
