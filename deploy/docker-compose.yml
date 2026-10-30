@@ -50,6 +50,10 @@ services:
     volumes:
       # The repo tree: source, node_modules, and the durable ledger + workspace.
       - /home/jacksim/hermes-users/jacksim/workspace/pi-host:/opt/pi-host
+      # The projects tree: multi-project cwd targets (the /project bind path from
+      # inside is /opt/projects/<name>; rw — the agent builds and creates
+      # worktrees there; allowlist-scoped by design).
+      - /home/jacksim/hermes-users/jacksim/workspace/projects:/opt/projects
       # Host tmpfs, read-only: nothing secret ever lands on disk.
       - /dev/shm/pi-host:/run/secrets:ro
     extra_hosts:
