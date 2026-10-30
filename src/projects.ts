@@ -417,8 +417,11 @@ export function createProjects(host: ProjectsHost) {
 		list,
 		/** The `project` prompt section: the living instructions. */
 		section: projectSection,
-		/** The extension that installs the section; the daemon installs it once. */
-		extension: { name: "projects", sections: [projectSection] } satisfies Extension,
+		/** The extension that installs the section AND the anchor task — the anchor
+			must ship with the extension (the durability contract: pending anchors
+			resume only once their definition is registered again). Missed in the
+			2026-10-30 wiring: both project anchors sat pending forever. */
+		extension: { name: "projects", sections: [projectSection], tasks: [anchorTask] } satisfies Extension,
 		anchor: anchorTask,
 	};
 }
