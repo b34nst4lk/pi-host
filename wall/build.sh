@@ -15,6 +15,10 @@ rm -rf assets
 mkdir -p assets/js
 cp -R build/dev/javascript/. assets/js/
 rm -rf assets/js/wall/internal assets/js/gleeunit
+# compile caches are build machinery, not runtime: they mutate every rebuild
+# and would flap in git forever (found in review 2026-10-30)
+find assets -name "_gleam_artefacts" -type d -exec rm -rf {} + 2>/dev/null || true
+find assets -name "*.cache" -o -name "*.cache_meta" | xargs rm -f
 cp index.html assets/index.html
 
 echo "assets/index.html"

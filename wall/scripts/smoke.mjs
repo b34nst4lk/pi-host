@@ -35,7 +35,29 @@ for (const poll of [0, 1, 2, 3, 4]) {
 
 const html = flatten(view(state));
 const text = html.replace(/<[^>]+>/g, " ");
-const needles = ["THE WALL", "VITALS", "SPEND", "FLEET", "QUEUE", "reader", "wall-ui", "#s114", "$0.00", "cached"];
+const needles = [
+  "THE WALL",
+  "VITALS",
+  "SPEND",
+  "AGENTS",
+  "QUEUE",
+  "reader",
+  "wall-ui",
+  "#s114",
+  "$0.00",
+  "cached",
+  // round 2: the agent-state cards and the work line
+  "pi-spike",
+  "work: ",
+  " in flight · ",
+  " queued",
+  "badge state-working",
+  "badge state-reporting",
+  "badge state-alive",
+  "unnamed (prunable)",
+  "last answer #2393",
+  "retired anchor(s) not shown",
+];
 const missing = needles.filter((n) => !html.includes(n));
 const polylines = (html.match(/<polyline/g) || []).length;
 const banner = text.includes("unexpected response shape");

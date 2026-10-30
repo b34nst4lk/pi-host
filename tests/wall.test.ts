@@ -13,6 +13,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import { LIVE_MAX_AGE_S, freshness } from "../src/wall/contract.ts";
+import { agentState, busyTasks, inboxItemCount, liveBusy, plainKind, reporterChild, stateLabel, type AnchorFact, type TaskFact } from "../src/wall/agents.ts";
 import { createLedger, oneLine } from "../src/wall/ledger.ts";
 import { createSpend, mapBalance, mapUsage } from "../src/wall/spend.ts";
 import { createHandler } from "../src/wall/server.ts";
@@ -69,6 +70,30 @@ function writeDocument(db: DatabaseSync, id: number, kind: string, base: unknown
 			"delta",
 			JSON.stringify(delta),
 		);
+	}
+}
+
+/** The same replay, for a document that belongs to one conversation. */
+function writeDocumentFor(
+	db: DatabaseSync,
+	id: number,
+	kind: string,
+	conversation: number,
+	base: unknown,
+	deltas: [number, unknown][],
+): void {
+	db
+		.prepare("INSERT INTO documents (id, kind, scope_kind, owner_id, record) VALUES (?, ?, ?, ?, ?)")
+		.run(id, quoted(kind), "conversation", conversation, "{}");
+	db.prepare("INSERT INTO document_revisions (document_id, seq, kind, version, content) VALUES (?, 1, ?, 1, ?)").run(
+		id,
+		"base",
+		JSON.stringify(base),
+	);
+	for (const [seq, delta] of deltas) {
+		db
+			.prepare("INSERT INTO document_revisions (document_id, seq, kind, version, content) VALUES (?, ?, ?, 1, ?)")
+			.run(id, seq, "delta", JSON.stringify(delta));
 	}
 }
 
@@ -394,6 +419,276 @@ describe("server", () => {
 			const head = await fetch(`${base}/api/health`, { method: "HEAD" });
 			expect(head.status).toBe(200);
 			expect(await head.text()).toBe("");
+		} finally {
+			server.close();
+		}
+	});
+});
+
+// --- the agent-state enum --------------------------------------------------
+//
+// Two layers of proof. The table below pins the precedence on hand-built facts
+// (no database at all), and the fixture after it proves the reader gathers the
+// right facts from the real schema: conversations → anchors, tasks by kind,
+// replayed `pi.inbox` / `pi.live`, and reporter tasks still in flight.
+
+type Facts = Parameters<typeof agentState>[0];
+
+function facts(overrides: Partial<Facts> = {}): Facts {
+	return {
+		tasks: [],
+		inbox_items: 0,
+		live_busy: null,
+		reporter_pending: false,
+		anchor: null,
+		named: true,
+		readable: true,
+		...overrides,
+	};
+}
+
+const runTask = (status: string, kind = "pi.generation"): TaskFact => ({ id: 1, kind, status, conversation: 9 });
+const anchor = (status: string): AnchorFact => ({ id: 99, status, conversation: 1, name: "child" });
+
+describe("agent state enum", () => {
+	it("prefers working over queued when a child is busy AND has inbox items", () => {
+		expect(agentState(facts({ tasks: [runTask("running")], inbox_items: 3 }))).toBe("working");
+		expect(agentState(facts({ tasks: [runTask("waiting")], inbox_items: 3 }))).toBe("working");
+		expect(agentState(facts({ tasks: [runTask("running", '"pi.tool"')], inbox_items: 1 }))).toBe("working");
+		expect(agentState(facts({ tasks: [runTask("running", "pi.compaction")] }))).toBe("working");
+	});
+
+	it("says queued when only the inbox has work", () => {
+		expect(agentState(facts({ inbox_items: 2 }))).toBe("queued");
+		expect(agentState(facts({ tasks: [runTask("terminal")], inbox_items: 2 }))).toBe("queued");
+	});
+
+	it("says reporting when the child is idle but its reporter is still running", () => {
+		expect(agentState(facts({ reporter_pending: true }))).toBe("reporting");
+		// ...unless the child itself is busy, which wins.
+		expect(agentState(facts({ reporter_pending: true, tasks: [runTask("running")] }))).toBe("working");
+	});
+
+	it("says alive for a held anchor the registry names", () => {
+		expect(agentState(facts({ anchor: anchor("running") }))).toBe("alive");
+		expect(agentState(facts({ anchor: anchor("waiting") }))).toBe("alive");
+	});
+
+	it("says orphaned for a held anchor nothing names", () => {
+		expect(agentState(facts({ anchor: anchor("running"), named: false }))).toBe("orphaned");
+		// A busy orphan is still working: precedence is about the work, not the name.
+		expect(agentState(facts({ anchor: anchor("running"), named: false, tasks: [runTask("running")] }))).toBe("working");
+	});
+
+	it("says retired for a terminal anchor", () => {
+		expect(agentState(facts({ anchor: anchor("terminal") }))).toBe("retired");
+		expect(agentState(facts({ anchor: anchor("terminal"), named: false }))).toBe("retired");
+	});
+
+	it("says unknown when it cannot read the ledger", () => {
+		expect(agentState(facts({ readable: false, tasks: [runTask("running")] }))).toBe("unknown");
+		expect(agentState(facts({ anchor: null, named: false }))).toBe("unknown");
+	});
+
+	it("trusts pi.live when there is no task row yet", () => {
+		expect(agentState(facts({ live_busy: true }))).toBe("working");
+		expect(agentState(facts({ live_busy: false }))).toBe("alive");
+	});
+
+	it("ignores anchor and reporter tasks when counting run work", () => {
+		const tasks = [
+			{ id: 1, kind: "subagent-anchor", status: "running", conversation: 1 },
+			{ id: 2, kind: '"subagent-reporter"', status: "running", conversation: 1 },
+		] as TaskFact[];
+		expect(busyTasks(tasks)).toHaveLength(0);
+		expect(agentState(facts({ tasks }))).toBe("alive");
+	});
+
+	it("reads the reporter's child from either record spelling", () => {
+		expect(reporterChild({ input: { child: 2166 } })).toBe(2166);
+		expect(reporterChild({ input: { conversationId: 2402 } })).toBe(2402);
+		expect(reporterChild({ input: {} })).toBeNull();
+		expect(reporterChild(null)).toBeNull();
+	});
+
+	it("counts inbox items and live runs defensively", () => {
+		expect(inboxItemCount({ items: [{ id: 1 }, { id: 2 }] })).toBe(2);
+		expect(inboxItemCount({ items: [] })).toBe(0);
+		expect(inboxItemCount({})).toBeNull();
+		expect(inboxItemCount(null)).toBeNull();
+		expect(liveBusy({ run: { taskId: 1 } })).toBe(true);
+		expect(liveBusy({ generation: { attempt: 1 } })).toBe(true);
+		expect(liveBusy({})).toBe(false);
+		expect(liveBusy(null)).toBeNull();
+	});
+
+	it("renders the orphan state as a prunable, unnamed agent", () => {
+		expect(stateLabel("orphaned")).toBe("unnamed (prunable)");
+		expect(stateLabel("working")).toBe("working");
+	});
+
+	it("unquotes ledger task kinds", () => {
+		expect(plainKind('"pi.generation"')).toBe("pi.generation");
+		expect(plainKind("pi.generation")).toBe("pi.generation");
+		expect(plainKind("not json\"")).toBe('not json"');
+		expect(plainKind(null)).toBe("");
+	});
+});
+
+/** A ledger with four children in four states, one orphan and one retired anchor. */
+function agentsFixture(): Fixture {
+	const dir = tempDir();
+	const dbPath = path.join(dir, "session.sqlite");
+	const logPath = path.join(dir, "daemon.log");
+	const db = newDb(dbPath);
+	db.exec("CREATE TABLE conversations (id INTEGER PRIMARY KEY, owner_conversation_id INTEGER, owner_task_id INTEGER, record TEXT)");
+
+	const task = (id: number, conversation: number, kind: string, status: string, record: unknown = {}) => {
+		db.prepare("INSERT INTO tasks (id, conversation_id, kind, status, abort_requested, background, record) VALUES (?, ?, ?, ?, 0, 0, ?)").run(
+			id,
+			conversation,
+			quoted(kind),
+			status,
+			JSON.stringify(record),
+		);
+	};
+	const conversation = (id: number, ownerTask: number | null) => {
+		db.prepare("INSERT INTO conversations (id, owner_conversation_id, owner_task_id, record) VALUES (?, ?, ?, '{}')").run(
+			id,
+			ownerTask === null ? null : 1,
+			ownerTask,
+		);
+	};
+
+	// The main conversation owns everything: anchors, reporters, and its own run.
+	conversation(1, null);
+	task(2165, 1, "subagent-anchor", "running", { input: { name: "reader" }, state: { checkpoint: { phase: "hold" } } });
+	task(2401, 1, "subagent-anchor", "running", { input: { name: "wall-ui" }, state: { checkpoint: { phase: "hold" } } });
+	task(2774, 1, "subagent-anchor", "running", { input: { name: "probe" }, state: { checkpoint: { phase: "hold" } } });
+	task(2899, 1, "subagent-anchor", "running", { input: { name: "ghost" } });
+	task(2999, 1, "subagent-anchor", "terminal", { input: { name: "finished" } });
+	task(10, 1, "pi.generation", "running");
+	task(11, 1, "pi.generation", "terminal");
+	task(12, 1, "subagent-reporter", "running", { input: { child: 2402 } });
+
+	// reader (2166): a live generation, and inbox items the working state outranks.
+	conversation(2166, 2165);
+	task(20, 2166, "pi.generation", "running");
+	writeDocumentFor(db, 30, "pi.inbox", 2166, { items: [] }, [[2, [["a", ["items"], { id: "a", mode: "steer", content: "go" }]]]]);
+	writeDocumentFor(db, 31, "pi.live", 2166, {}, []);
+
+	// wall-ui (2402): idle, with a reporter still running in the main conversation.
+	conversation(2402, 2401);
+	task(21, 2402, "pi.generation", "terminal");
+	writeDocumentFor(db, 32, "pi.inbox", 2402, { items: [] }, []);
+
+	// probe (2775): idle with one queued steer.
+	conversation(2775, 2774);
+	writeDocumentFor(db, 34, "pi.inbox", 2775, { items: [] }, [
+		[2, [["a", ["items"], { id: "b", mode: "followUp", content: "and then?" }]]],
+	]);
+
+	// The main conversation also has queued steer — "queued" is countable work,
+	// it just loses to "working" on the spike card.
+	writeDocumentFor(db, 33, "pi.inbox", 1, { items: [] }, [
+		[2, [["a", ["items"], { id: "c", mode: "steer", content: "status?" }]]],
+		[3, [["a", ["items"], { id: "d", mode: "followUp", content: "then rest" }]]],
+	]);
+
+	// ghost (2900): a held anchor nothing names — the orphan.
+	conversation(2900, 2899);
+
+	// finished (3000): an anchor that reached terminal, so no card at all.
+	conversation(3000, 2999);
+
+	writeDocument(
+		db,
+		40,
+		"app.subagents",
+		{
+			agents: {
+				reader: { conversationId: 2166, reported: [2393], worktree: "/w/reader" },
+				"wall-ui": { conversationId: 2402, reported: [], worktree: "/w/wall-ui" },
+				probe: { conversationId: 2775, reported: [2782], worktree: "/w/probe" },
+			},
+			reporters: { "wall-ui": 2409 },
+		},
+		[],
+	);
+	db.close();
+	fs.writeFileSync(logPath, "", "utf8");
+	return { dbPath, logPath };
+}
+
+describe("agents report", () => {
+	it("derives every state from the ledger, in precedence order", () => {
+		const { dbPath, logPath } = agentsFixture();
+		const agents = createLedger({ dbPath, logPath }).state().agents;
+
+		expect(agents.ok).toBe(true);
+		expect(agents.spike).toEqual({ state: "working", conversation: 1 });
+		const byName = Object.fromEntries(agents.named.map((card) => [card.name, card]));
+		expect(byName.reader).toMatchObject({ state: "working", conversation: 2166, anchor: 2165, last_reply: 2393 });
+		expect(byName["wall-ui"]).toMatchObject({ state: "reporting", conversation: 2402, anchor: 2401 });
+		expect(byName.probe).toMatchObject({ state: "queued", conversation: 2775, anchor: 2774, last_reply: 2782 });
+		expect(agents.named.map((card) => card.name)).toEqual(["probe", "reader", "wall-ui"]);
+	});
+
+	it("keeps held-but-unnamed anchors visible and terminal ones out of the cards", () => {
+		const { dbPath, logPath } = agentsFixture();
+		const agents = createLedger({ dbPath, logPath }).state().agents;
+
+		expect(agents.orphans).toEqual([{ anchor: 2899, conversation: 2900 }]);
+		expect(agents.retired).toBe(1);
+		expect(agents.named.some((card) => card.anchor === 2999)).toBe(false);
+	});
+
+	it("counts work in the main conversation: in flight and queued", () => {
+		const { dbPath, logPath } = agentsFixture();
+		const agents = createLedger({ dbPath, logPath }).state().agents;
+		// One live pi.generation in the main conversation: anchors and the reporter
+		// are not work. Queued counts the replayed inbox, and it does not change
+		// the spike state — working still wins.
+		expect(agents.work).toEqual({ in_flight: 1, queued: 2 });
+		expect(agents.spike.state).toBe("working");
+	});
+
+	it("falls back to the anchor's name when conversations is unreadable", () => {
+		const { dbPath, logPath } = agentsFixture();
+		const db = new DatabaseSync(dbPath);
+		db.exec("DROP TABLE conversations");
+		db.close();
+
+		const agents = createLedger({ dbPath, logPath }).state().agents;
+		expect(agents.ok).toBe(true);
+		const byName = Object.fromEntries(agents.named.map((card) => [card.name, card]));
+		// Anchors are matched by `input.name`, so the cards survive the loss.
+		expect(byName.reader).toMatchObject({ state: "working", anchor: 2165 });
+		expect(agents.orphans.map((orphan) => orphan.anchor)).toContain(2899);
+	});
+
+	it("reports states as unknown rather than alive when the ledger is gone", () => {
+		const dir = tempDir();
+		const ledger = createLedger({ dbPath: path.join(dir, "missing.sqlite"), logPath: path.join(dir, "daemon.log") });
+		const agents = ledger.state().agents;
+		expect(agents.ok).toBe(false);
+		expect(agents.error).toBeTruthy();
+		expect(agents.spike.state).toBe("unknown");
+		expect(agents.work).toEqual({ in_flight: null, queued: null });
+		expect(agents.retired).toBeNull();
+	});
+
+	it("serves the agents block on /api/state", async () => {
+		const { handler } = wall(agentsFixture());
+		const { server, base } = await serve(handler);
+		try {
+			const body = (await (await fetch(`${base}/api/state`)).json()) as {
+				agents: { spike: { state: string }; named: { name: string }[]; orphans: unknown[]; work: { in_flight: number } };
+			};
+			expect(body.agents.spike.state).toBe("working");
+			expect(body.agents.named.map((card) => card.name)).toEqual(["probe", "reader", "wall-ui"]);
+			expect(body.agents.orphans).toHaveLength(1);
+			expect(body.agents.work.in_flight).toBe(1);
 		} finally {
 			server.close();
 		}

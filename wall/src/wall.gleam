@@ -55,7 +55,7 @@ pub fn update(current: model.Model, msg: model.Msg) -> #(model.Model, effect.Eff
               ..current,
               vitals: option.Some(state.vitals),
               queue: option.Some(queue_with_errors(current, state.queue)),
-              fleet: state.fleet,
+              agents: option.Some(state.agents),
               polls: current.polls + 1,
               error: option.None,
             ),

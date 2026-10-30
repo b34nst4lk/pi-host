@@ -11,12 +11,12 @@ import gleam/result
 import gleam/string
 import wall/model
 
-/// One `/api/state` response: what the vitals, queue and fleet cards show.
+/// One `/api/state` response: what the vitals, queue and agent cards show.
 pub type State {
   State(
     vitals: model.Vitals,
     queue: model.Queue,
-    fleet: List(model.Agent),
+    agents: model.Agents,
   )
 }
 
@@ -45,7 +45,18 @@ fn state_decoder() -> decode.Decoder(State) {
   use running <- optional_int_at(["queue", "tasks", "running"])
   use pending <- optional_int_at(["queue", "tasks", "pending"])
   use unanswered <- optional_int_at(["queue", "submissions", "unanswered"])
-  use fleet <- with_then(decode.optionally_at(["fleet", "agents"], [], decode.list(agent_decoder())))
+  use spike_state <- with_then(
+    decode.optionally_at(["agents", "spike", "state"], "unknown", decode.string),
+  )
+  use named <- with_then(
+    decode.optionally_at(["agents", "named"], [], decode.list(agent_card_decoder())),
+  )
+  use orphans <- with_then(
+    decode.optionally_at(["agents", "orphans"], [], decode.list(orphan_decoder())),
+  )
+  use retired <- optional_int_at(["agents", "retired"])
+  use in_flight <- optional_int_at(["agents", "work", "in_flight"])
+  use queued <- optional_int_at(["agents", "work", "queued"])
   decode.success(State(
     vitals: model.Vitals(
       entries: entries,
@@ -66,23 +77,36 @@ fn state_decoder() -> decode.Decoder(State) {
       unanswered: unanswered,
       errors: [],
     ),
-    fleet: fleet,
+    agents: model.Agents(
+      spike_state: spike_state,
+      named: named,
+      orphans: orphans,
+      retired: retired,
+      in_flight: in_flight,
+      queued: queued,
+    ),
   ))
 }
 
-fn agent_decoder() -> decode.Decoder(model.Agent) {
+fn agent_card_decoder() -> decode.Decoder(model.AgentCard) {
   use name <- field_or("name", "unnamed", decode.string)
+  use state <- field_or("state", "unknown", decode.string)
   use branch <- field_or("branch", "", decode.string)
   use worktree <- field_or("worktree", "", decode.string)
-  use reports <- field_or("reports", 0, decode.int)
-  use state <- field_or("state", "unknown", decode.string)
-  decode.success(model.Agent(
+  use last_reply <- optional_int("last_reply")
+  decode.success(model.AgentCard(
     name: name,
+    state: state,
     branch: branch,
     worktree: worktree,
-    reports: reports,
-    state: state,
+    last_reply: last_reply,
   ))
+}
+
+fn orphan_decoder() -> decode.Decoder(model.Orphan) {
+  use anchor <- field_or("anchor", 0, decode.int)
+  use conversation <- optional_int("conversation")
+  decode.success(model.Orphan(anchor: anchor, conversation: conversation))
 }
 
 fn spend_decoder() -> decode.Decoder(model.Spend) {
@@ -119,6 +143,13 @@ fn field_or(
   next: fn(a) -> decode.Decoder(b),
 ) -> decode.Decoder(b) {
   decode.optional_field(name, default, inner, next)
+}
+
+fn optional_int(
+  name: String,
+  next: fn(Option(Int)) -> decode.Decoder(a),
+) -> decode.Decoder(a) {
+  decode.optional_field(name, None, decode.optional(decode.int), next)
 }
 
 fn optional_int_at(

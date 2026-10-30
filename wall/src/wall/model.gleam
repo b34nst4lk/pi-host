@@ -69,6 +69,36 @@ pub type Agent {
   )
 }
 
+/// One agent card, judged by the reader's state enum. `last_reply` is the newest
+/// answer entry the registry knows — `None` renders as `—`, never `0`.
+pub type AgentCard {
+  AgentCard(
+    name: String,
+    state: String,
+    branch: String,
+    worktree: String,
+    last_reply: Option(Int),
+  )
+}
+
+/// A held anchor nothing names: prunable, and worth seeing.
+pub type Orphan {
+  Orphan(anchor: Int, conversation: Option(Int))
+}
+
+/// The AGENTS card: pi-spike, the named subagents, the orphans, and the work
+/// counter that replaced the old "tasks running" line.
+pub type Agents {
+  Agents(
+    spike_state: String,
+    named: List(AgentCard),
+    orphans: List(Orphan),
+    retired: Option(Int),
+    in_flight: Option(Int),
+    queued: Option(Int),
+  )
+}
+
 pub type Queue {
   Queue(
     inbox_depth: Option(Int),
@@ -95,7 +125,7 @@ pub type Model {
     mode: Mode,
     vitals: Option(Vitals),
     spend: Option(Spend),
-    fleet: List(Agent),
+    agents: Option(Agents),
     queue: Option(Queue),
     samples: List(Sample),
     polls: Int,
@@ -119,7 +149,7 @@ pub fn initial(mode: Mode) -> Model {
     mode: mode,
     vitals: None,
     spend: None,
-    fleet: [],
+    agents: None,
     queue: None,
     samples: [],
     polls: 0,
@@ -271,6 +301,77 @@ pub fn freshness_from_state(text: String) -> Freshness {
     "slow" -> Slow
     "stale" -> Stale
     _ -> Unknown
+  }
+}
+
+// --- the agent-state enum -------------------------------------------------
+
+/// The six states, in precedence order (highest first), plus the seventh the
+/// reader sends when it cannot tell. Kept here so the view and the tests agree
+/// on the vocabulary instead of repeating string literals.
+pub const agent_states = [
+  "working",
+  "queued",
+  "reporting",
+  "alive",
+  "orphaned",
+  "retired",
+  "unknown",
+]
+
+/// The badge label for a state word. Anything the reader invents beyond the
+/// enum renders as `unknown` rather than as a confidently wrong badge.
+pub fn agent_state_label(state: String) -> String {
+  case state {
+    "working" -> "working"
+    "queued" -> "queued"
+    "reporting" -> "reporting"
+    "alive" -> "alive"
+    "orphaned" -> "unnamed (prunable)"
+    "retired" -> "retired"
+    _ -> "unknown"
+  }
+}
+
+/// The CSS class for a state badge; unknown words get the neutral class.
+pub fn agent_state_class(state: String) -> String {
+  case state {
+    "working" -> "badge state-working"
+    "queued" -> "badge state-queued"
+    "reporting" -> "badge state-reporting"
+    "alive" -> "badge state-alive"
+    "orphaned" -> "badge state-orphaned"
+    "retired" -> "badge state-retired"
+    _ -> "badge state-unknown"
+  }
+}
+
+/// `work: 3 in flight · 0 queued` — the line that replaced "tasks running".
+pub fn work_line(agents: Agents) -> String {
+  "work: "
+  <> format_count(agents.in_flight)
+  <> " in flight · "
+  <> format_count(agents.queued)
+  <> " queued"
+}
+
+/// `work: — in flight · — queued` when there are no agents yet.
+pub fn empty_agents() -> Agents {
+  Agents(
+    spike_state: "unknown",
+    named: [],
+    orphans: [],
+    retired: None,
+    in_flight: None,
+    queued: None,
+  )
+}
+
+/// `2 unnamed (prunable)` / `no orphans`, for the one-line summary.
+pub fn orphan_summary(agents: Agents) -> String {
+  case list.length(agents.orphans) {
+    0 -> "no orphans"
+    count -> int.to_string(count) <> " unnamed (prunable)"
   }
 }
 

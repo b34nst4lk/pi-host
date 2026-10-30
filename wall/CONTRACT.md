@@ -29,8 +29,8 @@ read-only (the rest of `/api/state` is then mostly `null`s).
 
 ## GET /api/state
 
-Vitals, queue and fleet — everything that comes out of the ledger. One request, one
-snapshot, `200` even when parts failed.
+Vitals, queue, fleet and the agent-state cards — everything that comes out of the
+ledger. One request, one snapshot, `200` even when parts failed.
 
 ```json
 {
@@ -90,6 +90,24 @@ snapshot, `200` even when parts failed.
         "state": "reported"
       }
     ]
+  },
+  "agents": {
+    "ok": true, "error": null,
+    "spike": { "state": "working", "conversation": 1 },
+    "named": [
+      {
+        "name": "reader",
+        "state": "working",
+        "branch": "worktree-reader",
+        "worktree": "/opt/pi-host/workspace/worktrees/reader",
+        "last_reply": 2393,
+        "conversation": 2166,
+        "anchor": 2165
+      }
+    ],
+    "orphans": [ { "anchor": 2899, "conversation": 2900 } ],
+    "retired": 1,
+    "work": { "in_flight": 2, "queued": 0 }
   }
 }
 ```
@@ -127,6 +145,40 @@ snapshot, `200` even when parts failed.
   `last_report_entry` is the newest of the two (`reported` array, else `reporters`).
   `branch` is `"worktree-" + name`, `state` is `"reported"` when an entry is known
   else `"waiting"`. No document → `agents: []`.
+
+### `agents` — the agent-state enum (round 2, additive in v1)
+
+Six states, decided by **precedence** (highest first). The implementation is one
+pure function, `agentState()` in `src/wall/agents.ts`, so the order is readable and
+testable without a database:
+
+| # | state | decided by |
+| --- | --- | --- |
+| 1 | `working` | the conversation has `pi.generation`/`pi.tool`/`pi.compaction` tasks in `running`/`waiting`/`completing`, or its replayed `pi.live` holds a `run`/`generation` |
+| 2 | `queued` | nothing in flight, and the replayed `pi.inbox.items` is non-empty |
+| 3 | `reporting` | idle, but a `subagent-reporter` task for this conversation is still `running`/`waiting`/`completing` in the main conversation |
+| 4 | `alive` | an anchor for it is held (`kind = subagent-anchor`, status ≠ `terminal`) **and** `app.subagents` names it |
+| 5 | `orphaned` | an anchor is held and nothing names it — the wall renders `unnamed (prunable)` |
+| 6 | `retired` | its anchor reached `terminal`: counted in `retired`, never a card |
+| — | `unknown` | the ledger could not be read, or the registry names a conversation that is not in `conversations` |
+
+- `spike` — the main conversation (`conversations` row nothing owns; `1` when that
+  cannot be read), judged by the same enum. It has no anchor, so it settles at
+  `alive` when idle (it is named by definition).
+- `named[]` — one card per `app.subagents` agent, sorted by name. `conversation` is
+  the registry's `conversationId`; `anchor` is the anchor task that owns it (via
+  `conversations.owner_task_id`, falling back to the anchor's `record.input.name`
+  when `conversations` is unreadable); `last_reply` is the `fleet` value, or `null`
+  (rendered `—`, never `0`). A named agent whose conversation cannot be found is
+  `unknown`, not `alive`.
+- `orphans[]` — held anchors with no registry entry: the anchor **task** id (not a
+  conversation) plus the conversation it owns, when that can be derived.
+- `retired` — `count(*)` of `subagent-anchor` tasks with status `terminal`.
+- `work` — `in_flight` counts in-flight run tasks in the **main** conversation
+  (anchors and reporters are not work); `queued` is the main conversation's replayed
+  `pi.inbox.items` length. `null` when the ledger or the document is unreadable.
+- Every document read here is `base` + `delta` replay, scoped by
+  `scope_kind = 'conversation'`, `owner_id = <conversation>`.
 
 ## GET /api/spend
 
@@ -193,8 +245,8 @@ sample is only appended when the corresponding value is non-`null`.
 | --- | --- |
 | **VITALS** | ledger entries + size, sparkline of entries; sync freshness (state colour, `age_s`, batch, seq); daemon log size + `errors_24h` + last error line; container uptime |
 | **SPEND** | requests / input / output tokens for 24 h, sparkline of requests; budget bars: upstream calls `used_in_window/10` per minute, `percent_used` of the balance; `cached`/`stale` badge |
-| **FLEET** | one card per subagent: name, branch, worktree, reports count, last report entry, state |
-| **QUEUE** | inbox depth, task counts by status, submission counts by status, up to 10 recent errors |
+| **AGENTS** | `work: <in_flight> in flight · <queued> queued`; the pi-spike card; one card per named subagent (state badge, branch, worktree, last answer entry id); an orphans row (`N unnamed (prunable)` + `#anchor → c<conversation>` ids); a retired-anchor count when > 0 |
+| **QUEUE** | the same `work:` line in place of the old `tasks running` counter; inbox depth, tasks pending, unanswered, up to 10 recent errors |
 
 ## Versioning
 

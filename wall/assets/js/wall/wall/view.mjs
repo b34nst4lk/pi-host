@@ -53,6 +53,15 @@ function section_title(label) {
   );
 }
 
+function or_default_agents(agents) {
+  if (agents instanceof Some) {
+    let agents$1 = agents[0];
+    return agents$1;
+  } else {
+    return $model.empty_agents();
+  }
+}
+
 function or_default_queue(queue) {
   if (queue instanceof Some) {
     let queue$1 = queue[0];
@@ -73,14 +82,21 @@ function queue_card(current) {
   let _pipe = current.queue;
   _block = or_default_queue(_pipe);
   let queue = _block;
+  let _block$1;
+  let _pipe$1 = current.agents;
+  _block$1 = or_default_agents(_pipe$1);
+  let agents = _block$1;
   return $html.section(
     listPrepend($attribute.class$("card queue"), $List$Empty$const),
     listPrepend(
       section_title("QUEUE"),
       listPrepend(
-        stat("inbox depth", $model.format_count(queue.inbox_depth)),
+        $html.p(
+          listPrepend($attribute.class$("work-line"), $List$Empty$const),
+          listPrepend(text($model.work_line(agents)), $List$Empty$const),
+        ),
         listPrepend(
-          stat("tasks running", $model.format_count(queue.running)),
+          stat("inbox depth", $model.format_count(queue.inbox_depth)),
           listPrepend(
             stat("tasks pending", $model.format_count(queue.pending)),
             listPrepend(
@@ -122,89 +138,240 @@ function queue_card(current) {
   );
 }
 
-function fleet_card(current) {
-  return $html.section(
-    listPrepend($attribute.class$("card fleet"), $List$Empty$const),
+function element_none() {
+  return $html.span(
+    listPrepend($attribute.class$("hidden"), $List$Empty$const),
+    $List$Empty$const,
+  );
+}
+
+function orphans_row(agents) {
+  let $ = agents.orphans;
+  if ($ instanceof $Empty) {
+    return $html.p(
+      listPrepend($attribute.class$("muted"), $List$Empty$const),
+      listPrepend(text("no orphans"), $List$Empty$const),
+    );
+  } else {
+    let orphans = $;
+    return $html.div(
+      listPrepend($attribute.class$("orphans"), $List$Empty$const),
+      listPrepend(
+        $html.span(
+          listPrepend($attribute.class$("orphan-count"), $List$Empty$const),
+          listPrepend(text($model.orphan_summary(agents)), $List$Empty$const),
+        ),
+        listPrepend(
+          $html.span(
+            listPrepend($attribute.class$("orphan-ids"), $List$Empty$const),
+            listPrepend(
+              text(
+                (() => {
+                  let _pipe = orphans;
+                  let _pipe$1 = $list.map(
+                    _pipe,
+                    (orphan) => {
+                      let $1 = orphan.conversation;
+                      if ($1 instanceof Some) {
+                        let conversation = $1[0];
+                        return (("#" + $int.to_string(orphan.anchor)) + " → c") + $int.to_string(
+                          conversation,
+                        );
+                      } else {
+                        return "#" + $int.to_string(orphan.anchor);
+                      }
+                    },
+                  );
+                  return $string.join(_pipe$1, ", ");
+                })(),
+              ),
+              $List$Empty$const,
+            ),
+          ),
+          $List$Empty$const,
+        ),
+      ),
+    );
+  }
+}
+
+function agent_entry(name, state, branch, worktree, last_reply, show_reply) {
+  return $html.div(
+    listPrepend($attribute.class$("agent"), $List$Empty$const),
     listPrepend(
-      section_title("FLEET"),
+      $html.div(
+        listPrepend($attribute.class$("agent-head"), $List$Empty$const),
+        listPrepend(
+          $html.span(
+            listPrepend($attribute.class$("agent-name"), $List$Empty$const),
+            listPrepend(text(name), $List$Empty$const),
+          ),
+          listPrepend(
+            $html.span(
+              listPrepend(
+                $attribute.class$($model.agent_state_class(state)),
+                $List$Empty$const,
+              ),
+              listPrepend(
+                text($model.agent_state_label(state)),
+                $List$Empty$const,
+              ),
+            ),
+            $List$Empty$const,
+          ),
+        ),
+      ),
       listPrepend(
         (() => {
-          let $ = current.fleet;
-          if ($ instanceof $Empty) {
-            return $html.p(
-              listPrepend($attribute.class$("muted"), $List$Empty$const),
-              listPrepend(text("no subagents"), $List$Empty$const),
-            );
+          if (branch === "") {
+            return element_none();
           } else {
-            let agents = $;
+            let branch$1 = branch;
             return $html.div(
-              listPrepend($attribute.class$("agents"), $List$Empty$const),
-              $list.map(
-                agents,
-                (agent) => {
-                  return $html.div(
-                    listPrepend($attribute.class$("agent"), $List$Empty$const),
-                    listPrepend(
-                      $html.div(
-                        listPrepend(
-                          $attribute.class$("agent-name"),
-                          $List$Empty$const,
-                        ),
-                        listPrepend(text(agent.name), $List$Empty$const),
-                      ),
-                      listPrepend(
-                        $html.div(
-                          listPrepend(
-                            $attribute.class$("agent-state"),
-                            $List$Empty$const,
-                          ),
-                          listPrepend(text(agent.state), $List$Empty$const),
-                        ),
-                        listPrepend(
-                          $html.div(
-                            listPrepend(
-                              $attribute.class$("agent-branch"),
-                              $List$Empty$const,
-                            ),
-                            listPrepend(text(agent.branch), $List$Empty$const),
-                          ),
-                          listPrepend(
-                            $html.div(
-                              listPrepend(
-                                $attribute.class$("agent-worktree"),
-                                $List$Empty$const,
-                              ),
-                              listPrepend(
-                                text(agent.worktree),
-                                $List$Empty$const,
-                              ),
-                            ),
-                            listPrepend(
-                              $html.div(
-                                listPrepend(
-                                  $attribute.class$("agent-reports"),
-                                  $List$Empty$const,
-                                ),
-                                listPrepend(
-                                  text(
-                                    $int.to_string(agent.reports) + " report(s)",
-                                  ),
-                                  $List$Empty$const,
-                                ),
-                              ),
-                              $List$Empty$const,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
+              listPrepend($attribute.class$("agent-branch"), $List$Empty$const),
+              listPrepend(text(branch$1), $List$Empty$const),
             );
           }
         })(),
-        $List$Empty$const,
+        listPrepend(
+          (() => {
+            if (worktree === "") {
+              return element_none();
+            } else {
+              let worktree$1 = worktree;
+              return $html.div(
+                listPrepend(
+                  $attribute.class$("agent-worktree"),
+                  $List$Empty$const,
+                ),
+                listPrepend(text(worktree$1), $List$Empty$const),
+              );
+            }
+          })(),
+          listPrepend(
+            (() => {
+              if (show_reply) {
+                return $html.div(
+                  listPrepend(
+                    $attribute.class$("agent-reply"),
+                    $List$Empty$const,
+                  ),
+                  listPrepend(
+                    text(
+                      (() => {
+                        if (last_reply instanceof Some) {
+                          let entry = last_reply[0];
+                          return "last answer #" + $int.to_string(entry);
+                        } else {
+                          return "no answer yet";
+                        }
+                      })(),
+                    ),
+                    $List$Empty$const,
+                  ),
+                );
+              } else {
+                return element_none();
+              }
+            })(),
+            $List$Empty$const,
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+/**
+ * The AGENTS card: pi-spike, one card per named subagent (state badge + branch
+ * + worktree + last answer entry), then the orphans — held anchors nothing
+ * names, which are prunable and would otherwise be invisible.
+ * 
+ * @ignore
+ */
+function agents_card(current) {
+  let _block;
+  let _pipe = current.agents;
+  _block = or_default_agents(_pipe);
+  let agents = _block;
+  return $html.section(
+    listPrepend($attribute.class$("card agents"), $List$Empty$const),
+    listPrepend(
+      section_title("AGENTS"),
+      listPrepend(
+        $html.p(
+          listPrepend($attribute.class$("work-line"), $List$Empty$const),
+          listPrepend(text($model.work_line(agents)), $List$Empty$const),
+        ),
+        listPrepend(
+          agent_entry(
+            "pi-spike",
+            agents.spike_state,
+            "main conversation",
+            "",
+            Option$None$const,
+            false,
+          ),
+          listPrepend(
+            (() => {
+              let $ = agents.named;
+              if ($ instanceof $Empty) {
+                return $html.p(
+                  listPrepend($attribute.class$("muted"), $List$Empty$const),
+                  listPrepend(text("no named subagents"), $List$Empty$const),
+                );
+              } else {
+                let cards = $;
+                return $html.div(
+                  listPrepend($attribute.class$("agents"), $List$Empty$const),
+                  $list.map(
+                    cards,
+                    (card) => {
+                      return agent_entry(
+                        card.name,
+                        card.state,
+                        card.branch,
+                        card.worktree,
+                        card.last_reply,
+                        true,
+                      );
+                    },
+                  ),
+                );
+              }
+            })(),
+            listPrepend(
+              orphans_row(agents),
+              listPrepend(
+                (() => {
+                  let $ = agents.retired;
+                  if ($ instanceof Some) {
+                    let count = $[0];
+                    if (count > 0) {
+                      return $html.p(
+                        listPrepend(
+                          $attribute.class$("muted"),
+                          $List$Empty$const,
+                        ),
+                        listPrepend(
+                          text(
+                            $model.format_count(new Some(count)) + " retired anchor(s) not shown",
+                          ),
+                          $List$Empty$const,
+                        ),
+                      );
+                    } else {
+                      return element_none();
+                    }
+                  } else {
+                    return element_none();
+                  }
+                })(),
+                $List$Empty$const,
+              ),
+            ),
+          ),
+        ),
       ),
     ),
   );
@@ -431,13 +598,6 @@ function spend_card(current) {
   );
 }
 
-function element_none() {
-  return $html.span(
-    listPrepend($attribute.class$("hidden"), $List$Empty$const),
-    $List$Empty$const,
-  );
-}
-
 function short(text_value, limit) {
   let $ = $string.length(text_value) > limit;
   if ($) {
@@ -579,7 +739,7 @@ export function view(current) {
               listPrepend(
                 spend_card(current),
                 listPrepend(
-                  fleet_card(current),
+                  agents_card(current),
                   listPrepend(queue_card(current), $List$Empty$const),
                 ),
               ),

@@ -123,6 +123,53 @@ export type StateReport = {
 	vitals: Vitals;
 	queue: QueueReport;
 	fleet: FleetReport;
+	/** Added in v1 without a version bump: agent-state cards (see wall/CONTRACT.md). */
+	agents: AgentsReport;
+};
+
+// --- agents: the state enum, as cards --------------------------------------
+
+/** Precedence order documented in `agents.ts`; `unknown` = the ledger could not be read. */
+export type AgentStateValue = "working" | "queued" | "reporting" | "alive" | "orphaned" | "retired" | "unknown";
+
+/** pi-spike itself: the main conversation, judged by the same enum. */
+export type SpikeCard = {
+	state: AgentStateValue;
+	conversation: number | null;
+};
+
+/** One named subagent. `last_reply` is the newest answer entry the registry knows. */
+export type NamedAgentCard = {
+	name: string;
+	state: AgentStateValue;
+	branch: string;
+	worktree: string | null;
+	last_reply: number | null;
+	conversation: number | null;
+	anchor: number | null;
+};
+
+/** A held anchor nothing names. `anchor` is the anchor task id, not the conversation. */
+export type OrphanCard = {
+	anchor: number;
+	conversation: number | null;
+};
+
+/** Run work in the main conversation: what the wall shows instead of "running tasks". */
+export type WorkCounts = {
+	in_flight: number | null;
+	queued: number | null;
+};
+
+export type AgentsReport = {
+	ok: boolean;
+	error: string | null;
+	spike: SpikeCard;
+	named: NamedAgentCard[];
+	orphans: OrphanCard[];
+	/** Terminal anchors: counted for the health line, never rendered as cards. */
+	retired: number | null;
+	work: WorkCounts;
 };
 
 export type SpendUsage = {

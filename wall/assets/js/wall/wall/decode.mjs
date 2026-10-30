@@ -13,22 +13,22 @@ import {
 import * as $model from "../wall/model.mjs";
 
 export class State extends $CustomType {
-  constructor(vitals, queue, fleet) {
+  constructor(vitals, queue, agents) {
     super();
     this.vitals = vitals;
     this.queue = queue;
-    this.fleet = fleet;
+    this.agents = agents;
   }
 }
-export const State$State = (vitals, queue, fleet) =>
-  new State(vitals, queue, fleet);
+export const State$State = (vitals, queue, agents) =>
+  new State(vitals, queue, agents);
 export const State$isState = (value) => value instanceof State;
 export const State$State$vitals = (value) => value.vitals;
 export const State$State$0 = (value) => value.vitals;
 export const State$State$queue = (value) => value.queue;
 export const State$State$1 = (value) => value.queue;
-export const State$State$fleet = (value) => value.fleet;
-export const State$State$2 = (value) => value.fleet;
+export const State$State$agents = (value) => value.agents;
+export const State$State$2 = (value) => value.agents;
 
 /**
  * One line, no stack: the model renders this in the error banner.
@@ -48,45 +48,38 @@ function option_or(value, default$) {
   }
 }
 
+function optional_int_at(path, next) {
+  let _pipe = $decode.optionally_at(
+    path,
+    Option$None$const,
+    $decode.optional($decode.int),
+  );
+  return $decode.then$(_pipe, next);
+}
+
+function optional_int(name, next) {
+  return $decode.optional_field(
+    name,
+    Option$None$const,
+    $decode.optional($decode.int),
+    next,
+  );
+}
+
 function field_or(name, default$, inner, next) {
   return $decode.optional_field(name, default$, inner, next);
 }
 
-function agent_decoder() {
+function orphan_decoder() {
   return field_or(
-    "name",
-    "unnamed",
-    $decode.string,
-    (name) => {
-      return field_or(
-        "branch",
-        "",
-        $decode.string,
-        (branch) => {
-          return field_or(
-            "worktree",
-            "",
-            $decode.string,
-            (worktree) => {
-              return field_or(
-                "reports",
-                0,
-                $decode.int,
-                (reports) => {
-                  return field_or(
-                    "state",
-                    "unknown",
-                    $decode.string,
-                    (state) => {
-                      return $decode.success(
-                        new $model.Agent(name, branch, worktree, reports, state),
-                      );
-                    },
-                  );
-                },
-              );
-            },
-          );
+    "anchor",
+    0,
+    $decode.int,
+    (anchor) => {
+      return optional_int(
+        "conversation",
+        (conversation) => {
+          return $decode.success(new $model.Orphan(anchor, conversation));
         },
       );
     },
@@ -98,13 +91,49 @@ function with_then(decoder, next) {
   return $decode.then$(_pipe, next);
 }
 
-function optional_int_at(path, next) {
-  let _pipe = $decode.optionally_at(
-    path,
-    Option$None$const,
-    $decode.optional($decode.int),
+function agent_card_decoder() {
+  return field_or(
+    "name",
+    "unnamed",
+    $decode.string,
+    (name) => {
+      return field_or(
+        "state",
+        "unknown",
+        $decode.string,
+        (state) => {
+          return field_or(
+            "branch",
+            "",
+            $decode.string,
+            (branch) => {
+              return field_or(
+                "worktree",
+                "",
+                $decode.string,
+                (worktree) => {
+                  return optional_int(
+                    "last_reply",
+                    (last_reply) => {
+                      return $decode.success(
+                        new $model.AgentCard(
+                          name,
+                          state,
+                          branch,
+                          worktree,
+                          last_reply,
+                        ),
+                      );
+                    },
+                  );
+                },
+              );
+            },
+          );
+        },
+      );
+    },
   );
-  return $decode.then$(_pipe, next);
 }
 
 function optional_string_at(path, next) {
@@ -249,49 +278,136 @@ function state_decoder() {
                                                           return with_then(
                                                             $decode.optionally_at(
                                                               listPrepend(
-                                                                "fleet",
+                                                                "agents",
                                                                 listPrepend(
-                                                                  "agents",
-                                                                  $List$Empty$const,
-                                                                ),
-                                                              ),
-                                                              $List$Empty$const,
-                                                              $decode.list(
-                                                                agent_decoder(),
-                                                              ),
-                                                            ),
-                                                            (fleet) => {
-                                                              return $decode.success(
-                                                                new State(
-                                                                  new $model.Vitals(
-                                                                    entries,
-                                                                    ledger_bytes,
-                                                                    $model.freshness_from_state(
-                                                                      (() => {
-                                                                        let _pipe = sync_state;
-                                                                        return option_or(
-                                                                          _pipe,
-                                                                          "",
-                                                                        );
-                                                                      })(),
-                                                                    ),
-                                                                    sync_age_s,
-                                                                    sync_batch,
-                                                                    sync_seq,
-                                                                    errors_24h,
-                                                                    last_error,
-                                                                    daemon_uptime_s,
-                                                                    container_uptime_s,
-                                                                  ),
-                                                                  new $model.Queue(
-                                                                    inbox_depth,
-                                                                    running,
-                                                                    pending,
-                                                                    unanswered,
+                                                                  "spike",
+                                                                  listPrepend(
+                                                                    "state",
                                                                     $List$Empty$const,
                                                                   ),
-                                                                  fleet,
                                                                 ),
+                                                              ),
+                                                              "unknown",
+                                                              $decode.string,
+                                                            ),
+                                                            (spike_state) => {
+                                                              return with_then(
+                                                                $decode.optionally_at(
+                                                                  listPrepend(
+                                                                    "agents",
+                                                                    listPrepend(
+                                                                      "named",
+                                                                      $List$Empty$const,
+                                                                    ),
+                                                                  ),
+                                                                  $List$Empty$const,
+                                                                  $decode.list(
+                                                                    agent_card_decoder(),
+                                                                  ),
+                                                                ),
+                                                                (named) => {
+                                                                  return with_then(
+                                                                    $decode.optionally_at(
+                                                                      listPrepend(
+                                                                        "agents",
+                                                                        listPrepend(
+                                                                          "orphans",
+                                                                          $List$Empty$const,
+                                                                        ),
+                                                                      ),
+                                                                      $List$Empty$const,
+                                                                      $decode.list(
+                                                                        orphan_decoder(),
+                                                                      ),
+                                                                    ),
+                                                                    (orphans) => {
+                                                                      return optional_int_at(
+                                                                        listPrepend(
+                                                                          "agents",
+                                                                          listPrepend(
+                                                                            "retired",
+                                                                            $List$Empty$const,
+                                                                          ),
+                                                                        ),
+                                                                        (
+                                                                            retired
+                                                                          ) => {
+                                                                          return optional_int_at(
+                                                                            listPrepend(
+                                                                              "agents",
+                                                                              listPrepend(
+                                                                                "work",
+                                                                                listPrepend(
+                                                                                  "in_flight",
+                                                                                  $List$Empty$const,
+                                                                                ),
+                                                                              ),
+                                                                            ),
+                                                                            (
+                                                                                in_flight
+                                                                              ) => {
+                                                                              return optional_int_at(
+                                                                                listPrepend(
+                                                                                  "agents",
+                                                                                  listPrepend(
+                                                                                    "work",
+                                                                                    listPrepend(
+                                                                                      "queued",
+                                                                                      $List$Empty$const,
+                                                                                    ),
+                                                                                  ),
+                                                                                ),
+                                                                                (
+                                                                                    queued
+                                                                                  ) => {
+                                                                                  return $decode.success(
+                                                                                    new State(
+                                                                                      new $model.Vitals(
+                                                                                        entries,
+                                                                                        ledger_bytes,
+                                                                                        $model.freshness_from_state(
+                                                                                          (() => {
+                                                                                            let _pipe = sync_state;
+                                                                                            return option_or(
+                                                                                              _pipe,
+                                                                                              "",
+                                                                                            );
+                                                                                          })(),
+                                                                                        ),
+                                                                                        sync_age_s,
+                                                                                        sync_batch,
+                                                                                        sync_seq,
+                                                                                        errors_24h,
+                                                                                        last_error,
+                                                                                        daemon_uptime_s,
+                                                                                        container_uptime_s,
+                                                                                      ),
+                                                                                      new $model.Queue(
+                                                                                        inbox_depth,
+                                                                                        running,
+                                                                                        pending,
+                                                                                        unanswered,
+                                                                                        $List$Empty$const,
+                                                                                      ),
+                                                                                      new $model.Agents(
+                                                                                        spike_state,
+                                                                                        named,
+                                                                                        orphans,
+                                                                                        retired,
+                                                                                        in_flight,
+                                                                                        queued,
+                                                                                      ),
+                                                                                    ),
+                                                                                  );
+                                                                                },
+                                                                              );
+                                                                            },
+                                                                          );
+                                                                        },
+                                                                      );
+                                                                    },
+                                                                  );
+                                                                },
                                                               );
                                                             },
                                                           );

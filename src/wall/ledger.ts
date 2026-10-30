@@ -15,6 +15,22 @@
 import fs from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import {
+	agentState,
+	ANCHOR_KIND,
+	anchorDetail,
+	busyTasks,
+	type AnchorFact,
+	inboxItemCount,
+	liveBusy,
+	plainKind,
+	REPORTER_KIND,
+	ROOT_CONVERSATION,
+	reporterChild,
+	RUNNING_STATUSES,
+	type TaskFact,
+} from "./agents.ts";
+import {
+	type AgentsReport,
 	type AgentReport,
 	type Counts,
 	freshness,
@@ -26,6 +42,8 @@ import {
 	type DaemonVitals,
 	type FleetReport,
 	type LedgerVitals,
+	type NamedAgentCard,
+	type OrphanCard,
 	type QueueError,
 	type QueueReport,
 	type SubmissionCounts,
@@ -41,7 +59,7 @@ export type LedgerOptions = {
 
 export type Ledger = {
 	health(): { ledger_ok: boolean; error: string | null };
-	state(): { vitals: Vitals; queue: QueueReport; fleet: FleetReport };
+	state(): { vitals: Vitals; queue: QueueReport; fleet: FleetReport; agents: AgentsReport };
 };
 
 const TASK_STATUSES = ["pending", "running", "waiting", "completing", "terminal"] as const;
@@ -247,6 +265,140 @@ export function createLedger(options: LedgerOptions): Ledger {
 		return { ok: true, error: null, agents: out.sort((a, b) => a.name.localeCompare(b.name)) };
 	}
 
+	function agentsReport(): AgentsReport {
+		// The registry is already read for `fleet`; the cards reuse it rather than
+		// reopening the same document.
+		const registry = fleetReport();
+		const probe = withDb((db) => {
+			const owners = readConversationOwners(db);
+			const rootId = rootConversation(owners);
+			const anchors = readAnchors(db);
+			const reporting = readPendingReporterChildren(db);
+
+			const childOfAnchor = (anchor: AnchorFact): number | null => {
+				for (const [conversation, ownerTask] of owners ?? []) {
+					if (ownerTask === anchor.id) return conversation;
+				}
+				// Fallback when `conversations` is unreadable: the anchor names the agent.
+				if (anchor.name === null) return null;
+				const byName = registry.agents.find((agent) => agent.name === anchor.name);
+				return byName?.conversation_id ?? null;
+			};
+
+			const wanted = new Set<number>([rootId]);
+			for (const agent of registry.agents) {
+				if (agent.conversation_id !== null) wanted.add(agent.conversation_id);
+			}
+			for (const anchor of anchors) {
+				const child = childOfAnchor(anchor);
+				if (child !== null) wanted.add(child);
+			}
+
+			const facts = new Map<number, ChildFacts>();
+			for (const conversation of wanted) facts.set(conversation, readChildFacts(db, conversation));
+			return { owners, rootId, anchors, reporting, facts, childOfAnchor };
+		});
+
+		const named: NamedAgentCard[] = [];
+		if (probe.value === null) {
+			// Unreadable ledger: still name the agents (the registry parsed), state unknown.
+			for (const agent of registry.agents) {
+				named.push({
+					name: agent.name,
+					state: "unknown",
+					branch: agent.branch,
+					worktree: agent.worktree,
+					last_reply: agent.last_report_entry,
+					conversation: agent.conversation_id,
+					anchor: null,
+				});
+			}
+			return {
+				ok: false,
+				error: probe.error,
+				spike: { state: "unknown", conversation: null },
+				named,
+				orphans: [],
+				retired: null,
+				work: { in_flight: null, queued: null },
+			};
+		}
+
+		const { owners, rootId, anchors, reporting, facts, childOfAnchor } = probe.value;
+		const namedConversations = new Set<number>();
+		const namedNames = new Set<string>();
+		for (const agent of registry.agents) {
+			namedNames.add(agent.name);
+			if (agent.conversation_id !== null) namedConversations.add(agent.conversation_id);
+		}
+
+		for (const agent of registry.agents) {
+			const conversation = agent.conversation_id;
+			const anchor = anchors.find((candidate) => {
+				const child = childOfAnchor(candidate);
+				return child !== null ? child === conversation : candidate.name === agent.name;
+			}) ?? null;
+			const childFacts = conversation === null ? null : facts.get(conversation) ?? null;
+			named.push({
+				name: agent.name,
+				state: agentState({
+					// A named agent we cannot locate is `unknown`, not `alive`.
+					readable: childFacts !== null,
+					tasks: childFacts?.tasks ?? [],
+					inbox_items: childFacts?.inbox_items ?? null,
+					live_busy: childFacts?.live_busy ?? null,
+					reporter_pending: conversation !== null && reporting.has(conversation),
+					anchor,
+					named: true,
+				}),
+				branch: agent.branch,
+				worktree: agent.worktree,
+				last_reply: agent.last_report_entry,
+				conversation,
+				anchor: anchor?.id ?? null,
+			});
+		}
+
+		const orphans: OrphanCard[] = [];
+		let retired = 0;
+		for (const anchor of anchors) {
+			if (anchor.status === "terminal") {
+				retired += 1;
+				continue;
+			}
+			const conversation = childOfAnchor(anchor);
+			const namedAnchor =
+				(conversation !== null && namedConversations.has(conversation)) ||
+				(anchor.name !== null && namedNames.has(anchor.name));
+			if (namedAnchor) continue;
+			orphans.push({ anchor: anchor.id, conversation });
+		}
+
+		const rootFacts = facts.get(rootId) ?? null;
+		const spike = agentState({
+			readable: rootFacts !== null,
+			tasks: rootFacts?.tasks ?? [],
+			inbox_items: rootFacts?.inbox_items ?? null,
+			live_busy: rootFacts?.live_busy ?? null,
+			reporter_pending: false,
+			anchor: null,
+			named: true,
+		});
+
+		return {
+			ok: true,
+			error: probe.error,
+			spike: { state: spike, conversation: rootId },
+			named: named.sort((a, b) => a.name.localeCompare(b.name)),
+			orphans: orphans.sort((a, b) => a.anchor - b.anchor),
+			retired,
+			work: {
+				in_flight: rootFacts === null ? null : busyTasks(rootFacts.tasks).length,
+				queued: rootFacts?.inbox_items ?? null,
+			},
+		};
+	}
+
 	return {
 		health,
 		state: () => ({
@@ -258,8 +410,103 @@ export function createLedger(options: LedgerOptions): Ledger {
 			},
 			queue: queueReport(),
 			fleet: fleetReport(),
+			agents: agentsReport(),
 		}),
 	};
+}
+
+// --- per-conversation facts the agent enum needs ---------------------------
+
+type ChildFacts = {
+	readonly tasks: TaskFact[];
+	readonly inbox_items: number | null;
+	readonly live_busy: boolean | null;
+};
+
+/** `conversations`: id → owner_task_id (the anchor). Null when the table is unreadable. */
+function readConversationOwners(db: DatabaseSync): Map<number, number | null> | null {
+	try {
+		const rows = db.prepare("select id, owner_task_id from conversations").all() as Record<string, unknown>[];
+		const out = new Map<number, number | null>();
+		for (const row of rows) {
+			const id = num(row.id);
+			if (id !== null) out.set(id, num(row.owner_task_id));
+		}
+		return out;
+	} catch {
+		return null;
+	}
+}
+
+/** The main conversation: the one nothing owns. pi-spike lives there. */
+function rootConversation(owners: Map<number, number | null> | null): number {
+	if (owners === null || owners.size === 0) return ROOT_CONVERSATION;
+	const roots = [...owners.entries()].filter(([, ownerTask]) => ownerTask === null).map(([id]) => id);
+	return roots.length === 0 ? ROOT_CONVERSATION : Math.min(...roots);
+}
+
+function readTasks(db: DatabaseSync, conversation: number): TaskFact[] {
+	const rows = db
+		.prepare("select id, kind, status, conversation_id from tasks where conversation_id = ?")
+		.all(conversation) as Record<string, unknown>[];
+	const out: TaskFact[] = [];
+	for (const row of rows) {
+		const id = num(row.id);
+		if (id === null) continue;
+		out.push({
+			id,
+			kind: plainKind(row.kind),
+			status: str(row.status) ?? "unknown",
+			conversation: num(row.conversation_id),
+		});
+	}
+	return out;
+}
+
+function readChildFacts(db: DatabaseSync, conversation: number): ChildFacts {
+	const inbox = readDocumentFor(db, "pi.inbox", conversation);
+	const live = readDocumentFor(db, "pi.live", conversation);
+	return {
+		tasks: readTasks(db, conversation),
+		inbox_items: inboxItemCount(inbox?.state),
+		live_busy: liveBusy(live?.state),
+	};
+}
+
+/** Anchor tasks live in the main conversation; they own the child conversations. */
+function readAnchors(db: DatabaseSync): AnchorFact[] {
+	const [plain, quoted] = kindVariants(ANCHOR_KIND);
+	const rows = db
+		.prepare("select id, status, conversation_id, record from tasks where kind in (?, ?) order by id")
+		.all(plain, quoted) as Record<string, unknown>[];
+	const out: AnchorFact[] = [];
+	for (const row of rows) {
+		const id = num(row.id);
+		if (id === null) continue;
+		out.push({
+			id,
+			status: str(row.status) ?? "unknown",
+			conversation: num(row.conversation_id),
+			name: anchorDetail(parseRecord(row.record)).name,
+		});
+	}
+	return out;
+}
+
+/** Children with a reporter task still in flight in the main conversation. */
+function readPendingReporterChildren(db: DatabaseSync): Set<number> {
+	const [plain, quoted] = kindVariants(REPORTER_KIND);
+	const rows = db
+		.prepare(
+			`select record from tasks where kind in (?, ?) and status in (${placeholders(RUNNING_STATUSES)})`,
+		)
+		.all(plain, quoted, ...RUNNING_STATUSES) as Record<string, unknown>[];
+	const out = new Set<number>();
+	for (const row of rows) {
+		const child = reporterChild(parseRecord(row.record));
+		if (child !== null) out.add(child);
+	}
+	return out;
 }
 
 // --- documents: base snapshot + replayed deltas ----------------------------
@@ -275,15 +522,29 @@ function readDocument(db: DatabaseSync, kind: string): DocumentValue | null {
 		)
 		.get(plain, quoted) as { id?: unknown } | undefined;
 	const id = num(doc?.id);
-	if (id === null) return null;
+	return id === null ? null : replayRevisions(db, id);
+}
 
+/** The same replay, for a document that belongs to one conversation (`pi.inbox`, `pi.live`). */
+function readDocumentFor(db: DatabaseSync, kind: string, conversationId: number): DocumentValue | null {
+	const [plain, quoted] = kindVariants(kind);
+	const doc = db
+		.prepare(
+			`select id from documents where kind in (?, ?) and scope_kind = 'conversation' and owner_id = ? and retired_at is null order by id desc limit 1`,
+		)
+		.get(plain, quoted, conversationId) as { id?: unknown } | undefined;
+	const id = num(doc?.id);
+	return id === null ? null : replayRevisions(db, id);
+}
+
+function replayRevisions(db: DatabaseSync, documentId: number): DocumentValue {
 	let state: unknown = null;
 	let seq = 0;
 	const revisions = db
 		.prepare(
 			"select seq, kind, content from document_revisions where document_id = ? order by seq asc",
 		)
-		.all(id) as { seq: unknown; kind: unknown; content: unknown }[];
+		.all(documentId) as { seq: unknown; kind: unknown; content: unknown }[];
 	for (const revision of revisions) {
 		const revisionSeq = num(revision.seq);
 		if (revisionSeq !== null && revisionSeq > seq) seq = revisionSeq;

@@ -66,12 +66,31 @@
       }
       .badge.cached { color: var(--slow); border-color: var(--slow); }
       .badge.stale { color: var(--stale); border-color: var(--stale); }
+      .badge.state-working { color: var(--accent); border-color: var(--accent); }
+      .badge.state-queued { color: var(--slow); border-color: var(--slow); }
+      .badge.state-reporting { color: var(--accent); border-color: var(--line); }
+      .badge.state-alive { color: var(--live); border-color: var(--live); }
+      .badge.state-orphaned { color: var(--stale); border-color: var(--stale); }
+      .badge.state-retired, .badge.state-unknown { color: var(--dim); border-color: var(--line); }
+      .work-line { margin: 0 0 10px; font-size: 11px; letter-spacing: 0.06em; color: var(--ink); }
       .agents { display: grid; gap: 10px; }
       .agent { border-top: 1px solid var(--line); padding-top: 8px; }
       .agent:first-child { border-top: none; padding-top: 0; }
+      .agent-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+      .agent-head .badge { margin-top: 0; }
       .agent-name { color: var(--accent); }
-      .agent-state, .agent-branch, .agent-worktree, .agent-reports { color: var(--dim); font-size: 11px; }
-      .agent-worktree { overflow-wrap: anywhere; }
+      .agent-branch, .agent-worktree, .agent-reply { color: var(--dim); font-size: 11px; }
+      .agent-worktree, .orphan-ids { overflow-wrap: anywhere; }
+      .orphans {
+        display: flex;
+        gap: 8px;
+        margin-top: 10px;
+        padding-top: 8px;
+        border-top: 1px solid var(--line);
+        font-size: 11px;
+        color: var(--dim);
+      }
+      .orphan-count { color: var(--slow); }
       .last-error { color: var(--stale); font-size: 11px; overflow-wrap: anywhere; margin: 10px 0 0; }
       .errors { margin: 10px 0 0; padding-left: 16px; color: var(--dim); font-size: 11px; }
       .hidden { display: none; }

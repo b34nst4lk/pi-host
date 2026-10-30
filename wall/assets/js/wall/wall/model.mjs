@@ -153,6 +153,72 @@ export const Agent$Agent$3 = (value) => value.reports;
 export const Agent$Agent$state = (value) => value.state;
 export const Agent$Agent$4 = (value) => value.state;
 
+export class AgentCard extends $CustomType {
+  constructor(name, state, branch, worktree, last_reply) {
+    super();
+    this.name = name;
+    this.state = state;
+    this.branch = branch;
+    this.worktree = worktree;
+    this.last_reply = last_reply;
+  }
+}
+export const AgentCard$AgentCard = (name, state, branch, worktree, last_reply) =>
+  new AgentCard(name, state, branch, worktree, last_reply);
+export const AgentCard$isAgentCard = (value) => value instanceof AgentCard;
+export const AgentCard$AgentCard$name = (value) => value.name;
+export const AgentCard$AgentCard$0 = (value) => value.name;
+export const AgentCard$AgentCard$state = (value) => value.state;
+export const AgentCard$AgentCard$1 = (value) => value.state;
+export const AgentCard$AgentCard$branch = (value) => value.branch;
+export const AgentCard$AgentCard$2 = (value) => value.branch;
+export const AgentCard$AgentCard$worktree = (value) => value.worktree;
+export const AgentCard$AgentCard$3 = (value) => value.worktree;
+export const AgentCard$AgentCard$last_reply = (value) => value.last_reply;
+export const AgentCard$AgentCard$4 = (value) => value.last_reply;
+
+export class Orphan extends $CustomType {
+  constructor(anchor, conversation) {
+    super();
+    this.anchor = anchor;
+    this.conversation = conversation;
+  }
+}
+export const Orphan$Orphan = (anchor, conversation) =>
+  new Orphan(anchor, conversation);
+export const Orphan$isOrphan = (value) => value instanceof Orphan;
+export const Orphan$Orphan$anchor = (value) => value.anchor;
+export const Orphan$Orphan$0 = (value) => value.anchor;
+export const Orphan$Orphan$conversation = (value) => value.conversation;
+export const Orphan$Orphan$1 = (value) => value.conversation;
+
+export class Agents extends $CustomType {
+  constructor(spike_state, named, orphans, retired, in_flight, queued) {
+    super();
+    this.spike_state = spike_state;
+    this.named = named;
+    this.orphans = orphans;
+    this.retired = retired;
+    this.in_flight = in_flight;
+    this.queued = queued;
+  }
+}
+export const Agents$Agents = (spike_state, named, orphans, retired, in_flight, queued) =>
+  new Agents(spike_state, named, orphans, retired, in_flight, queued);
+export const Agents$isAgents = (value) => value instanceof Agents;
+export const Agents$Agents$spike_state = (value) => value.spike_state;
+export const Agents$Agents$0 = (value) => value.spike_state;
+export const Agents$Agents$named = (value) => value.named;
+export const Agents$Agents$1 = (value) => value.named;
+export const Agents$Agents$orphans = (value) => value.orphans;
+export const Agents$Agents$2 = (value) => value.orphans;
+export const Agents$Agents$retired = (value) => value.retired;
+export const Agents$Agents$3 = (value) => value.retired;
+export const Agents$Agents$in_flight = (value) => value.in_flight;
+export const Agents$Agents$4 = (value) => value.in_flight;
+export const Agents$Agents$queued = (value) => value.queued;
+export const Agents$Agents$5 = (value) => value.queued;
+
 export class Queue extends $CustomType {
   constructor(inbox_depth, running, pending, unanswered, errors) {
     super();
@@ -209,20 +275,20 @@ export const Mode$FakeMode = () => Mode$FakeMode$const;
 export const Mode$isFakeMode = (value) => value instanceof FakeMode;
 
 export class Model extends $CustomType {
-  constructor(mode, vitals, spend, fleet, queue, samples, polls, error) {
+  constructor(mode, vitals, spend, agents, queue, samples, polls, error) {
     super();
     this.mode = mode;
     this.vitals = vitals;
     this.spend = spend;
-    this.fleet = fleet;
+    this.agents = agents;
     this.queue = queue;
     this.samples = samples;
     this.polls = polls;
     this.error = error;
   }
 }
-export const Model$Model = (mode, vitals, spend, fleet, queue, samples, polls, error) =>
-  new Model(mode, vitals, spend, fleet, queue, samples, polls, error);
+export const Model$Model = (mode, vitals, spend, agents, queue, samples, polls, error) =>
+  new Model(mode, vitals, spend, agents, queue, samples, polls, error);
 export const Model$isModel = (value) => value instanceof Model;
 export const Model$Model$mode = (value) => value.mode;
 export const Model$Model$0 = (value) => value.mode;
@@ -230,8 +296,8 @@ export const Model$Model$vitals = (value) => value.vitals;
 export const Model$Model$1 = (value) => value.vitals;
 export const Model$Model$spend = (value) => value.spend;
 export const Model$Model$2 = (value) => value.spend;
-export const Model$Model$fleet = (value) => value.fleet;
-export const Model$Model$3 = (value) => value.fleet;
+export const Model$Model$agents = (value) => value.agents;
+export const Model$Model$3 = (value) => value.agents;
 export const Model$Model$queue = (value) => value.queue;
 export const Model$Model$4 = (value) => value.queue;
 export const Model$Model$samples = (value) => value.samples;
@@ -289,12 +355,34 @@ export const Msg$isToggleMode = (value) => value instanceof ToggleMode;
  */
 export const history_length = 60;
 
+/**
+ * The six states, in precedence order (highest first), plus the seventh the
+ * reader sends when it cannot tell. Kept here so the view and the tests agree
+ * on the vocabulary instead of repeating string literals.
+ */
+export const agent_states = /* @__PURE__ */ listPrepend(
+  "working",
+  listPrepend(
+    "queued",
+    listPrepend(
+      "reporting",
+      listPrepend(
+        "alive",
+        listPrepend(
+          "orphaned",
+          listPrepend("retired", listPrepend("unknown", $List$Empty$const)),
+        ),
+      ),
+    ),
+  ),
+);
+
 export function initial(mode) {
   return new Model(
     mode,
     Option$None$const,
     Option$None$const,
-    $List$Empty$const,
+    Option$None$const,
     Option$None$const,
     $List$Empty$const,
     0,
@@ -598,5 +686,84 @@ export function freshness_from_state(text) {
     return Freshness$Stale$const;
   } else {
     return Freshness$Unknown$const;
+  }
+}
+
+/**
+ * The badge label for a state word. Anything the reader invents beyond the
+ * enum renders as `unknown` rather than as a confidently wrong badge.
+ */
+export function agent_state_label(state) {
+  if (state === "working") {
+    return state;
+  } else if (state === "queued") {
+    return state;
+  } else if (state === "reporting") {
+    return state;
+  } else if (state === "alive") {
+    return state;
+  } else if (state === "orphaned") {
+    return "unnamed (prunable)";
+  } else if (state === "retired") {
+    return state;
+  } else {
+    return "unknown";
+  }
+}
+
+/**
+ * The CSS class for a state badge; unknown words get the neutral class.
+ */
+export function agent_state_class(state) {
+  if (state === "working") {
+    return "badge state-working";
+  } else if (state === "queued") {
+    return "badge state-queued";
+  } else if (state === "reporting") {
+    return "badge state-reporting";
+  } else if (state === "alive") {
+    return "badge state-alive";
+  } else if (state === "orphaned") {
+    return "badge state-orphaned";
+  } else if (state === "retired") {
+    return "badge state-retired";
+  } else {
+    return "badge state-unknown";
+  }
+}
+
+/**
+ * `work: 3 in flight · 0 queued` — the line that replaced "tasks running".
+ */
+export function work_line(agents) {
+  return ((("work: " + format_count(agents.in_flight)) + " in flight · ") + format_count(
+    agents.queued,
+  )) + " queued";
+}
+
+/**
+ * `work: — in flight · — queued` when there are no agents yet.
+ */
+export function empty_agents() {
+  return new Agents(
+    "unknown",
+    $List$Empty$const,
+    $List$Empty$const,
+    Option$None$const,
+    Option$None$const,
+    Option$None$const,
+  );
+}
+
+/**
+ * `2 unnamed (prunable)` / `no orphans`, for the one-line summary.
+ */
+export function orphan_summary(agents) {
+  let $ = $list.length(agents.orphans);
+  if ($ === 0) {
+    return "no orphans";
+  } else {
+    let count = $;
+    return $int.to_string(count) + " unnamed (prunable)";
   }
 }

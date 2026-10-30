@@ -3,7 +3,7 @@
 //// `gleeunit` can assert on strings this module produces.
 ////
 //// Layout: a header, an optional error banner, then a two-by-two grid of
-//// VITALS / SPEND / FLEET / QUEUE.
+//// VITALS / SPEND / AGENTS / QUEUE.
 
 import gleam/float
 import gleam/int
@@ -23,7 +23,7 @@ pub fn view(current: model.Model) -> Element(model.Msg) {
     html.div([attribute.class("grid")], [
       vitals_card(current),
       spend_card(current),
-      fleet_card(current),
+      agents_card(current),
       queue_card(current),
     ]),
     footer(current),
@@ -111,33 +111,102 @@ fn spend_card(current: model.Model) -> Element(model.Msg) {
   ])
 }
 
-fn fleet_card(current: model.Model) -> Element(model.Msg) {
-  html.section([attribute.class("card fleet")], [
-    section_title("FLEET"),
-    case current.fleet {
-      [] -> html.p([attribute.class("muted")], [text("no subagents")])
-      agents ->
-        html.div([attribute.class("agents")], list.map(agents, fn(agent) {
-          html.div([attribute.class("agent")], [
-            html.div([attribute.class("agent-name")], [text(agent.name)]),
-            html.div([attribute.class("agent-state")], [text(agent.state)]),
-            html.div([attribute.class("agent-branch")], [text(agent.branch)]),
-            html.div([attribute.class("agent-worktree")], [text(agent.worktree)]),
-            html.div([attribute.class("agent-reports")], [
-              text(int.to_string(agent.reports) <> " report(s)"),
-            ]),
-          ])
+/// The AGENTS card: pi-spike, one card per named subagent (state badge + branch
+/// + worktree + last answer entry), then the orphans — held anchors nothing
+/// names, which are prunable and would otherwise be invisible.
+fn agents_card(current: model.Model) -> Element(model.Msg) {
+  let agents = current.agents |> or_default_agents()
+  html.section([attribute.class("card agents")], [
+    section_title("AGENTS"),
+    html.p([attribute.class("work-line")], [text(model.work_line(agents))]),
+    agent_entry("pi-spike", agents.spike_state, "main conversation", "", None, False),
+    case agents.named {
+      [] -> html.p([attribute.class("muted")], [text("no named subagents")])
+      cards ->
+        html.div([attribute.class("agents")], list.map(cards, fn(card) {
+          agent_entry(card.name, card.state, card.branch, card.worktree, card.last_reply, True)
         }))
+    },
+    orphans_row(agents),
+    case agents.retired {
+      Some(count) if count > 0 -> html.p([attribute.class("muted")], [
+        text(model.format_count(Some(count)) <> " retired anchor(s) not shown"),
+      ])
+      _ -> element_none()
     },
   ])
 }
 
+fn agent_entry(
+  name: String,
+  state: String,
+  branch: String,
+  worktree: String,
+  last_reply: Option(Int),
+  show_reply: Bool,
+) -> Element(model.Msg) {
+  html.div([attribute.class("agent")], [
+    html.div([attribute.class("agent-head")], [
+      html.span([attribute.class("agent-name")], [text(name)]),
+      html.span([attribute.class(model.agent_state_class(state))], [
+        text(model.agent_state_label(state)),
+      ]),
+    ]),
+    case branch {
+      "" -> element_none()
+      branch -> html.div([attribute.class("agent-branch")], [text(branch)])
+    },
+    case worktree {
+      "" -> element_none()
+      worktree -> html.div([attribute.class("agent-worktree")], [text(worktree)])
+    },
+    case show_reply {
+      False -> element_none()
+      True ->
+        html.div([attribute.class("agent-reply")], [
+          text(case last_reply {
+            Some(entry) -> "last answer #" <> int.to_string(entry)
+            None -> "no answer yet"
+          }),
+        ])
+    },
+  ])
+}
+
+fn orphans_row(agents: model.Agents) -> Element(model.Msg) {
+  case agents.orphans {
+    [] -> html.p([attribute.class("muted")], [text("no orphans")])
+    orphans ->
+      html.div([attribute.class("orphans")], [
+        html.span([attribute.class("orphan-count")], [
+          text(model.orphan_summary(agents)),
+        ]),
+        html.span([attribute.class("orphan-ids")], [
+          text(
+            orphans
+            |> list.map(fn(orphan) {
+              case orphan.conversation {
+                Some(conversation) ->
+                  "#" <> int.to_string(orphan.anchor) <> " → c" <> int.to_string(conversation)
+                None -> "#" <> int.to_string(orphan.anchor)
+              }
+            })
+            |> string.join(", "),
+          ),
+        ]),
+      ])
+  }
+}
+
 fn queue_card(current: model.Model) -> Element(model.Msg) {
   let queue = current.queue |> or_default_queue()
+  let agents = current.agents |> or_default_agents()
   html.section([attribute.class("card queue")], [
     section_title("QUEUE"),
+    // Liveness lives in the agent cards now; this line is the run counter that
+    // replaced "tasks running: N".
+    html.p([attribute.class("work-line")], [text(model.work_line(agents))]),
     stat("inbox depth", model.format_count(queue.inbox_depth)),
-    stat("tasks running", model.format_count(queue.running)),
     stat("tasks pending", model.format_count(queue.pending)),
     stat("unanswered", model.format_count(queue.unanswered)),
     case queue.errors {
@@ -271,6 +340,13 @@ fn or_default_vitals(vitals: Option(model.Vitals)) -> model.Vitals {
         daemon_uptime_s: None,
         container_uptime_s: None,
       )
+  }
+}
+
+fn or_default_agents(agents: Option(model.Agents)) -> model.Agents {
+  case agents {
+    Some(agents) -> agents
+    None -> model.empty_agents()
   }
 }
 

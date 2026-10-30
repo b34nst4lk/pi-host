@@ -1,4 +1,8 @@
-# THE WALL
+* the agent-state enum (`working`/`queued`/`reporting`/`alive`/`orphaned`/
+  `retired`, plus `unknown`) is decided by the reader and rendered as one badge per
+  card — see `CONTRACT.md`;
+* `src/wall/view.gleam` renders four cards (VITALS, SPEND, AGENTS, QUEUE), no chart
+  library;# THE WALL
 
 A read-only dashboard for the pi-host ledger, in two pieces that never share a
 process:
@@ -54,20 +58,23 @@ proves the model → decode → view chain, not a parallel code path.
 | `src/wall.gleam` | `init`/`update`, 10 s poll, `?fake=1`, `lustre.start` |
 | `src/wall/model.gleam` | types, ring buffer of samples, formatters, sparkline maths |
 | `src/wall/decode.gleam` | defensive JSON → model (`None` for anything odd) |
-| `src/wall/view.gleam` | pure `Model -> Element`: four cards, no chart library |
+| `src/wall/view.gleam` | pure `Model -> Element`: four cards (VITALS, SPEND, AGENTS, QUEUE), no chart library |
 | `src/wall/fake.gleam` | fixture JSON for offline development |
 | `src/wall/ffi.gleam` + `.ffi.mjs` | the only browser API surface: fetch, timer, clock, query string |
 
 Rules the UI keeps:
 
 * an unknown value renders `—`, never an invented `0`;
+* the agent-state enum (`working` / `queued` / `reporting` / `alive` / `orphaned` /
+  `retired`, plus `unknown`) is **decided by the reader** and rendered as one badge
+  per agent card — the UI never re-derives a state from raw counts;
 * a stale or absent reader is a banner, not a blank page;
 * sparklines are `svg.polyline` over a 0..100 × 0..24 box, hand-built;
 * no new dependencies beyond lustre and gleam_json.
 
 ## The reader
 
-`src/wall/{contract,ledger,spend,server,main}.ts` — see `CONTRACT.md` for every
+`src/wall/{contract,ledger,agents,spend,server,main}.ts` — see `CONTRACT.md` for every
 response shape and every environment variable. Run it with node 26 (it strips
 types itself):
 

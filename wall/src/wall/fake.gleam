@@ -55,7 +55,45 @@ pub fn state_json(poll: Int) -> String {
   <> agent("reader", "worktree-reader", 2)
   <> ","
   <> agent("wall-ui", "worktree-wall-ui", 1)
-  <> "]}}"
+  <> "]},"
+  // The agent-state cards: spike, three named agents in three different states,
+  // one orphan, and the run counter that replaced "tasks running".
+  <> "\"agents\":{\"ok\":true,\"error\":null,"
+  <> "\"spike\":{\"state\":\"working\",\"conversation\":1},"
+  <> "\"named\":["
+  <> card("reader", "working", "worktree-reader", "/opt/pi-host/workspace/worktrees/reader", 2393)
+  <> ","
+  <> card("wall-ui", "reporting", "worktree-wall-ui", "/opt/pi-host/workspace/worktrees/wall-ui", 2409)
+  <> ","
+  <> card("docs", "alive", "worktree-docs", "/opt/pi-host/workspace/worktrees/docs", 2181)
+  <> "],"
+  <> "\"orphans\":[{\"anchor\":2201,\"conversation\":2202}],"
+  <> "\"retired\":2,"
+  <> "\"work\":{\"in_flight\":"
+  <> int.to_string(poll % 3 + 3)
+  <> ",\"queued\":"
+  <> int.to_string(poll % 2)
+  <> "}}}"
+}
+
+fn card(
+  name: String,
+  state: String,
+  branch: String,
+  worktree: String,
+  last_reply: Int,
+) -> String {
+  "{\"name\":\""
+  <> name
+  <> "\",\"state\":\""
+  <> state
+  <> "\",\"branch\":\""
+  <> branch
+  <> "\",\"worktree\":\""
+  <> worktree
+  <> "\",\"last_reply\":"
+  <> int.to_string(last_reply)
+  <> ",\"conversation\":15,\"anchor\":16}"
 }
 
 fn agent(name: String, branch: String, reports: Int) -> String {
