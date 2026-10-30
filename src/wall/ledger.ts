@@ -29,6 +29,7 @@ import {
 	RUNNING_STATUSES,
 	type TaskFact,
 } from "./agents.ts";
+import { humanLine, kindPredicate, likeEscape, type LogsQuery } from "./logs.ts";
 import {
 	type AgentsReport,
 	type AgentReport,
@@ -36,6 +37,7 @@ import {
 	freshness,
 	isoFrom,
 	kindVariants,
+	type LogEntry,
 	num,
 	parseRecord,
 	secondsBetween,
@@ -60,6 +62,8 @@ export type LedgerOptions = {
 export type Ledger = {
 	health(): { ledger_ok: boolean; error: string | null };
 	state(): { vitals: Vitals; queue: QueueReport; fleet: FleetReport; agents: AgentsReport };
+	/** One page of the logs browser; `error` set means the page could not be read. */
+	logs(query: LogsQuery): { entries: LogEntry[]; next_before: number | null; error: string | null };
 };
 
 const TASK_STATUSES = ["pending", "running", "waiting", "completing", "terminal"] as const;
@@ -399,8 +403,51 @@ export function createLedger(options: LedgerOptions): Ledger {
 		};
 	}
 
+	function logs(query: LogsQuery): { entries: LogEntry[]; next_before: number | null; error: string | null } {
+		// Thread names come from the registry the fleet already reads: an entry whose
+		// conversation is a named subagent's is that subagent's line.
+		const threads = new Map<number, string>();
+		for (const agent of fleetReport().agents) {
+			if (agent.conversation_id !== null && !threads.has(agent.conversation_id)) {
+				threads.set(agent.conversation_id, agent.name);
+			}
+		}
+		const predicate = kindPredicate(query.kinds);
+		const probe = withDb((db) => {
+			const where: string[] = [predicate.sql];
+			const params: (string | number)[] = [...predicate.params];
+			if (query.before !== null) {
+				where.push("id < ?");
+				params.push(query.before);
+			}
+			if (query.q.length > 0) {
+				// The whole record is the searchable text: every text field lives there,
+				// and LIKE is ASCII case-insensitive, which is what a search box wants.
+				where.push("record like ? escape '\\'");
+				params.push(`%${likeEscape(query.q)}%`);
+			}
+			const sql = `select id, conversation_id, record from entries where ${where.join(" and ")} order by id desc limit ?`;
+			// One row past the page tells us whether `next_before` exists at all.
+			return db.prepare(sql).all(...params, query.limit + 1) as Record<string, unknown>[];
+		});
+		if (probe.error !== null) return { entries: [], next_before: null, error: probe.error };
+		const rows = probe.value ?? [];
+		const hasMore = rows.length > query.limit;
+		const page = hasMore ? rows.slice(0, query.limit) : rows;
+		const entries = page.map((row) => logEntry(row, threads));
+		const oldest = page.length === 0 ? null : num(page[page.length - 1]?.id);
+		return {
+			// `dir` is page order, not selection order: the page is always the newest
+			// rows older than the cursor, shown either way round.
+			entries: query.dir === "asc" ? [...entries].reverse() : entries,
+			next_before: hasMore ? oldest : null,
+			error: null,
+		};
+	}
+
 	return {
 		health,
+		logs,
 		state: () => ({
 			vitals: {
 				ledger: ledgerVitals(),
@@ -772,4 +819,32 @@ function unquote(value: string | null): string | null {
 export function oneLine(error: unknown): string {
 	const message = error instanceof Error ? error.message : String(error);
 	return message.split("\n")[0]?.slice(0, 300) ?? "unknown error";
+}
+
+/**
+ * One row of `entries` as the logs browser reports it. The record is passed to
+ * `humanLine` defensively (a broken row is `unknown entry`, not a failed page) and
+ * also carried verbatim so the wall can expand the row without a second request.
+ */
+function logEntry(row: Record<string, unknown>, threads: Map<number, string>): LogEntry {
+	const record = parseRecord(row.record);
+	const line = humanLine(record);
+	const raw =
+		typeof row.record === "string"
+			? row.record
+			: (() => {
+					try {
+						return JSON.stringify(row.record ?? null);
+					} catch {
+						return "null";
+					}
+				})();
+	const entry: LogEntry = { id: num(row.id) ?? 0, kind: line.kind, at: line.at, text: line.text, raw };
+	const conversation = num(row.conversation_id);
+	if (conversation !== null) {
+		const name = threads.get(conversation);
+		if (name !== undefined) entry.thread = name;
+	}
+	if (line.spill !== null) entry.spill = line.spill;
+	return entry;
 }

@@ -55,10 +55,10 @@ proves the model → decode → view chain, not a parallel code path.
 
 | file | role |
 | --- | --- |
-| `src/wall.gleam` | `init`/`update`, 10 s poll, `?fake=1`, `lustre.start` |
+| `src/wall.gleam` | `init`/`update`, 10 s poll, `?fake=1`, `lustre.start`; the logs tab's query effects |
 | `src/wall/model.gleam` | types, ring buffer of samples, formatters, sparkline maths |
 | `src/wall/decode.gleam` | defensive JSON → model (`None` for anything odd) |
-| `src/wall/view.gleam` | pure `Model -> Element`: four cards (VITALS, SPEND, AGENTS, QUEUE), no chart library |
+| `src/wall/view.gleam` | pure `Model -> Element`: four cards (VITALS, SPEND, AGENTS, QUEUE) behind a dashboard/logs tab bar, plus the full-width LOGS browser; no chart library |
 | `src/wall/fake.gleam` | fixture JSON for offline development |
 | `src/wall/ffi.gleam` + `.ffi.mjs` | the only browser API surface: fetch, timer, clock, query string |
 
@@ -70,7 +70,24 @@ Rules the UI keeps:
   per agent card — the UI never re-derives a state from raw counts;
 * a stale or absent reader is a banner, not a blank page;
 * sparklines are `svg.polyline` over a 0..100 × 0..24 box, hand-built;
+* the LOGS tab's filters are `kind=` parameters, not client-side filtering: what is
+  on screen is what the reader answered, and a filter combination that cannot match
+  (say `in` + the `pi.assistant` chip) shows an empty page rather than everything;
+* the live tail only replaces the page while it shows the newest rows: once `older`
+  has been pressed the 10 s poll leaves the page alone until a filter changes;
 * no new dependencies beyond lustre and gleam_json.
+
+### The LOGS tab
+
+`LOGS` (next to `DASHBOARD` in the header) is a browser over the ledger's own
+entries table: a row per entry, newest first, 10 s live tail. Each row shows the time,
+the kind, the subagent thread and the reader's one-line summary; opening it reveals
+the raw record and — when the entry spilled its full output — a `full output`
+expander that fetches `/api/spill?path=…` on demand. See `CONTRACT.md` for both
+endpoints.
+
+In fake mode the fixtures honour the chips and the search box, so the whole tab is
+clickable with no reader running (`index.html?fake=1`).
 
 ## The reader
 

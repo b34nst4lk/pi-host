@@ -19,6 +19,10 @@ rm -rf assets/js/wall/internal assets/js/gleeunit
 # and would flap in git forever (found in review 2026-10-30)
 find assets -name "_gleam_artefacts" -type d -exec rm -rf {} + 2>/dev/null || true
 find assets -name "*.cache" -o -name "*.cache_meta" | xargs rm -f
+# lustre ships `priv/` as a symlink into the build tree: an absolute path to this
+# machine, dangling in the container and flapping in git on every rebuild. The app
+# never imports it (client-only), so it is not part of the bundle.
+rm -f assets/js/lustre/priv
 cp index.html assets/index.html
 
 echo "assets/index.html"

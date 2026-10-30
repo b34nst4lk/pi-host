@@ -5,7 +5,8 @@ The dashboard is two programs and one JSON contract.
 - **reader** (node, `src/wall/*.ts`) — read-only view of the ledger + Ollama spend,
   served as JSON + the built UI on one port (`8091`).
 - **wall app** (gleam + lustre, `wall/`) — polls the reader every 10 s and renders
-  four sections. Never writes, never mutates, never needs credentials.
+  four sections plus a LOGS tab. Never writes, never mutates, never needs
+  credentials.
 
 Everything below is **versioned day one**. A response that cannot be built is still
 JSON: `{"v":1,"ok":false,"error":"<one line>"}`. `/api/*` never returns HTML. Unknown
@@ -225,6 +226,84 @@ minute**, and on upstream `429` serves the cache with `stale:true` (never a 500)
 - With no cached value at all and an upstream failure: `ok:false`, `usage:null`,
   `balance:null`, `error` set.
 
+## GET /api/logs
+
+Additive in v1: a browser over the ledger's `entries` table. Read-only, newest
+first, every row carrying its raw record verbatim.
+
+```
+GET /api/logs?before=<id>&limit=<n>&kind=<a,b>&dir=desc|asc&q=<text>
+```
+
+| param | default | notes |
+| --- | --- | --- |
+| `limit` | `50` | clamped to `1…200` |
+| `before` | none | exclusive cursor on `entries.id` (paging back) |
+| `kind` | all | comma list; `app.*` is a prefix, everything else an exact match |
+| `dir` | `desc` | order of the returned page only; selection is always the newest `limit` rows older than `before` |
+| `q` | none | substring search over the raw `record` text, `LIKE`-escaped (`%`, `_`, `\` are literal) |
+
+No parameter is ever rejected: out-of-range values clamp, an unknown `kind` simply
+matches nothing. The tail keeps working when the ledger does not.
+
+```json
+{
+  "v": 1,
+  "ok": true,
+  "entries": [
+    {
+      "id": 3522,
+      "kind": "pi.assistant",
+      "at": "2026-10-30T02:28:20.837Z",
+      "text": "answered: the wall is up",
+      "thread": "wall-ui",
+      "spill": "/tmp/tmp-123/pi-output-abc.log",
+      "raw": "{\"kind\":\"pi.assistant\",…}"
+    }
+  ],
+  "next_before": 3509
+}
+```
+
+- `kind` is `record.kind` (`pi.user`, `pi.assistant`, `pi.tool-result`,
+  `pi.compaction`, `pi.system`, `app.*`); the enum lives in `src/wall/logs.ts`, not in
+  the ledger, and the reader also sends `app.<name>` entries the harness appends.
+- `text` — the human line, one line, built per kind by the reader. A record that
+  cannot be parsed is `kind:"unknown"`, `text:"unknown entry"`; it never fails the
+  page.
+- `thread` — the subagent whose conversation the entry belongs to, from the same
+  registry `/api/state` reads. Absent for the main conversation.
+- `spill` — the on-disk full output of a truncated tool result, when the record
+  carries one.
+- `raw` — the record verbatim (a JSON string). The UI shows it in the row's
+  expander; the reader never re-serialises it.
+- `next_before` — pass as `&before=` for the next page; absent when the page reached
+  the oldest entry.
+
+## GET /api/spill
+
+```
+GET /api/spill?path=/opt/pi-host/storage/spill/full.log
+```
+
+```json
+{ "v": 1, "ok": true, "path": "…", "bytes": 18, "truncated": false, "text": "line one\nline two\n" }
+```
+
+Read-only, and confined to an allowlist of directories (`WALL_SPILL_ROOTS`, colon
+separated, default `/opt/pi-host`). Anything else is refused before a byte is read:
+
+| status | body |
+| --- | --- |
+| `200` | `ok:true` + `text` (bounded to 4 MiB) |
+| `404` | `{"v":1,"ok":false,"error":"no such file"}` |
+| `400` | `{"v":1,"ok":false,"error":"path outside the allowlist"}` (and the other refusals: relative path, `..` segment, NUL byte, symlink, not a regular file) |
+
+> **Note for the deployment:** the harness writes its spills to
+> `/tmp/tmp-*/pi-output-*.log`, which the default allowlist does **not** cover. Set
+> `WALL_SPILL_ROOTS=/opt/pi-host:/tmp` (or the narrower temp pattern) for the
+> expander to work on real spills.
+
 ## Static
 
 - `GET /` → `wall/assets/index.html`
@@ -247,6 +326,7 @@ sample is only appended when the corresponding value is non-`null`.
 | **SPEND** | requests / input / output tokens for 24 h, sparkline of requests; budget bars: upstream calls `used_in_window/10` per minute, `percent_used` of the balance; `cached`/`stale` badge |
 | **AGENTS** | `work: <in_flight> in flight · <queued> queued`; the pi-spike card; one card per named subagent (state badge, branch, worktree, last answer entry id); an orphans row (`N unnamed (prunable)` + `#anchor → c<conversation>` ids); a retired-anchor count when > 0 |
 | **QUEUE** | the same `work:` line in place of the old `tasks running` counter; inbox depth, tasks pending, unanswered, up to 10 recent errors |
+| **LOGS** (tab) | full-width ledger browser: newest first, live-tailed by the same 10 s poll; direction chips (`all` / `in` = `pi.user`, `out` = `pi.assistant` + `app.*`), one chip per kind (chips and direction intersect), a search box (`q=`), an `older` button that walks `before=`; each row is a `<details>`: human line, then the raw record as `<pre>`, then — when the entry has one — a `full output` expander that fetches `/api/spill` |
 
 ## Versioning
 

@@ -16,6 +16,8 @@ export type WallConfig = {
 	assetsDir: string;
 	apiBase: string;
 	keyFile: string | null;
+	/** Roots `/api/spill` may read from (colon-separated `WALL_SPILL_ROOTS`). */
+	spillRoots: string[];
 };
 
 export function readConfig(env: NodeJS.ProcessEnv = process.env): WallConfig {
@@ -29,6 +31,13 @@ export function readConfig(env: NodeJS.ProcessEnv = process.env): WallConfig {
 		// The key is a mounted secret: never logged, never in argv. The env var is the
 		// escape hatch for local runs; the file is the container's path.
 		keyFile: env.WALL_OLLAMA_KEY_FILE ?? "/run/secrets/ollama_key",
+		// One root by default: the repo tree the daemon writes spill files under. A
+		// colon-separated list lets an operator add the harness temp dir (`/tmp`)
+		// without widening the default.
+		spillRoots: (env.WALL_SPILL_ROOTS ?? "/opt/pi-host")
+			.split(":")
+			.map((root) => root.trim())
+			.filter((root) => root.length > 0),
 	};
 }
 
@@ -44,7 +53,12 @@ export function startWall(config: WallConfig = readConfig()): ReturnType<typeof 
 		apiKey: process.env.OLLAMA_API_KEY ?? null,
 		keyFile: config.keyFile ?? undefined,
 	});
-	const server = createWallServer({ ledger, spend, assetsDir: config.assetsDir });
+	const server = createWallServer({
+		ledger,
+		spend,
+		assetsDir: config.assetsDir,
+		spillRoots: config.spillRoots,
+	});
 	server.listen(config.port, config.host, () => {
 		// One line, no key material: the only thing an operator needs from the log.
 		console.log(

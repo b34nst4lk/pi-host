@@ -6,7 +6,7 @@
 import gleam/dynamic/decode
 import gleam/int
 import gleam/json
-import gleam/option.{type Option, None}
+import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
 import wall/model
@@ -152,6 +152,13 @@ fn optional_int(
   decode.optional_field(name, None, decode.optional(decode.int), next)
 }
 
+fn optional_string(
+  name: String,
+  next: fn(Option(String)) -> decode.Decoder(a),
+) -> decode.Decoder(a) {
+  decode.optional_field(name, None, decode.optional(decode.string), next)
+}
+
 fn optional_int_at(
   path: List(String),
   next: fn(Option(Int)) -> decode.Decoder(a),
@@ -195,4 +202,72 @@ fn option_or(value: Option(a), default: a) -> a {
 /// One line, no stack: the model renders this in the error banner.
 fn bad_shape(error: json.DecodeError) -> String {
   "unexpected response shape: " <> string.inspect(error)
+}
+
+// --- the logs tab ---------------------------------------------------------
+
+/// One `/api/logs` page. `ok:false` arrives on 200 (the reader clamps bad
+/// parameters and reports a broken ledger in the body), so the page keeps its
+/// flag instead of collapsing into a decode error: the tab renders the message
+/// in place of rows and keeps polling.
+pub type LogsPage {
+  LogsPage(
+    ok: Bool,
+    error: Option(String),
+    entries: List(model.LogEntry),
+    next_before: Option(Int),
+  )
+}
+
+pub fn logs(body: String) -> Result(LogsPage, String) {
+  json.parse(body, using: logs_decoder())
+  |> result.map_error(bad_shape)
+}
+
+fn logs_decoder() -> decode.Decoder(LogsPage) {
+  use ok <- field_or("ok", True, decode.bool)
+  use problem <- decode.optional_field("error", None, decode.optional(decode.string))
+  use entries <- decode.optional_field("entries", [], decode.list(log_entry_decoder()))
+  use next_before <- decode.optional_field("next_before", None, decode.optional(decode.int))
+  decode.success(LogsPage(ok: ok, error: problem, entries: entries, next_before: next_before))
+}
+
+/// A row with a missing or misshapen field still renders: the human line is the
+/// reader's job, and the raw record is shown verbatim beside it.
+fn log_entry_decoder() -> decode.Decoder(model.LogEntry) {
+  use id <- field_or("id", 0, decode.int)
+  use kind <- field_or("kind", "unknown", decode.string)
+  use at <- optional_string("at")
+  use text <- field_or("text", "unknown entry", decode.string)
+  use thread <- optional_string("thread")
+  use spill <- optional_string("spill")
+  use raw <- field_or("raw", "", decode.string)
+  decode.success(model.LogEntry(
+    id: id,
+    kind: kind,
+    at: at,
+    text: text,
+    thread: thread,
+    spill: spill,
+    raw: raw,
+  ))
+}
+
+/// One `/api/spill` answer: `Ok` is the text to show, `Error` the reason to show
+/// in its place. The reader answers 200 with `ok:false` for a ledger it cannot
+/// read; a real HTTP failure reaches the FFI's error callback instead.
+pub fn spill(body: String) -> Result(String, String) {
+  case json.parse(body, using: spill_decoder()) {
+    Ok(#(True, _, Some(text))) -> Ok(text)
+    Ok(#(True, _, None)) -> Ok("")
+    Ok(#(False, problem, _)) -> Error(option_or(problem, "no such file"))
+    Error(problem) -> Error(bad_shape(problem))
+  }
+}
+
+fn spill_decoder() -> decode.Decoder(#(Bool, Option(String), Option(String))) {
+  use ok <- field_or("ok", False, decode.bool)
+  use problem <- decode.optional_field("error", None, decode.optional(decode.string))
+  use text <- decode.optional_field("text", None, decode.optional(decode.string))
+  decode.success(#(ok, problem, text))
 }

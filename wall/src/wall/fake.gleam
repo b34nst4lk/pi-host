@@ -6,7 +6,10 @@
 //// before the reader exists.
 
 import gleam/int
+import gleam/list
+import gleam/option.{type Option, None, Some}
 import gleam/string
+import wall/model
 
 /// A plausible `/api/state` body; `poll` makes the numbers move a little, so the
 /// sparklines have something to draw.
@@ -126,4 +129,109 @@ pub fn spend_json(poll: Int) -> String {
   <> "\"balance\":{\"balance_usd\":0,\"purchased_usd\":0,\"percent_used\":"
   <> string.concat([int.to_string(12), ".5"])
   <> ",\"currency\":\"USD\",\"raw\":{}}}"
+}
+
+// --- the logs tab ---------------------------------------------------------
+
+/// A plausible `/api/logs` page: every kind the reader can send, one row with a
+/// spill path and one with a thread, all newest-first. `poll` bumps the ids so
+/// the live tail visibly moves; the filters are applied here too, so the chips
+/// and the search box do something in fake mode instead of looking broken.
+pub fn logs_json(filters: model.LogFilters, poll: Int) -> String {
+  let base = 3610 + poll
+  let rows = [
+    #(base, "pi.assistant", "answered: the wall is up", None, None),
+    #(
+      base - 1,
+      "pi.tool-result",
+      "bash: full output (18 bytes)",
+      None,
+      Some("/opt/pi-host/storage/spill/full.log"),
+    ),
+    #(base - 2, "pi.user", "steer: show me the last twenty entries", None, None),
+    #(base - 3, "pi.compaction", "compaction: 41 entries summarised", None, None),
+    #(base - 4, "pi.system", "system: preamble + 12 tools", None, None),
+    #(base - 5, "app.subagents", "spawn wall-ui", Some("wall-ui"), None),
+  ]
+  let kinds = model.effective_kinds(filters)
+  let kept =
+    list.filter(rows, fn(row) {
+      kind_selected(kinds, row.1) && text_matches(filters.query, row.2)
+    })
+  "{\"v\":1,\"ok\":true,\"entries\":["
+  <> string.join(list.map(kept, entry), ",")
+  <> "]"
+  <> case list.is_empty(kept) {
+    True -> ""
+    False -> ",\"next_before\":" <> int.to_string(base - 6)
+  }
+  <> "}"
+}
+
+fn kind_selected(kinds: List(String), kind: String) -> Bool {
+  case kinds {
+    [] -> True
+    _ ->
+      list.any(kinds, fn(pattern) {
+        case pattern {
+          "app.*" -> string.starts_with(kind, "app.")
+          _ -> pattern == kind
+        }
+      })
+  }
+}
+
+fn text_matches(query: String, text: String) -> Bool {
+  case string.trim(query) {
+    "" -> True
+    query -> string.contains(string.lowercase(text), string.lowercase(query))
+  }
+}
+
+/// `#(id, kind, text, thread, spill)` → one row of the page.
+fn entry(row: #(Int, String, String, Option(String), Option(String))) -> String {
+  let #(id, kind, text, thread, spill) = row
+  "{\"id\":"
+  <> int.to_string(id)
+  <> ",\"kind\":\""
+  <> kind
+  <> "\",\"at\":\"2026-10-29T14:30:"
+  <> pad2(id % 60)
+  <> ".000Z\",\"text\":\""
+  <> text
+  <> "\""
+  <> case thread {
+    option.Some(name) -> ",\"thread\":\"" <> name <> "\""
+    option.None -> ""
+  }
+  <> case spill {
+    option.Some(path) -> ",\"spill\":\"" <> path <> "\""
+    option.None -> ""
+  }
+  <> ",\"raw\":\""
+  <> escape("{\"kind\":\"" <> kind <> "\",\"id\":" <> int.to_string(id) <> "}")
+  <> "\"}"
+}
+
+/// A plausible `/api/spill` body.
+pub fn spill_json() -> String {
+  "{\"v\":1,\"ok\":true,\"path\":\"/opt/pi-host/storage/spill/full.log\",\"bytes\":18,"
+  <> "\"truncated\":false,\"text\":\""
+  <> escape("line one\nline two\n")
+  <> "\"}"
+}
+
+fn pad2(value: Int) -> String {
+  case value < 10 {
+    True -> "0" <> int.to_string(value)
+    False -> int.to_string(value)
+  }
+}
+
+/// JSON-escape a value that goes *inside* a fixture string.
+fn escape(value: String) -> String {
+  value
+  |> string.replace("\\", "\\\\")
+  |> string.replace("\"", "\\\"")
+  |> string.replace("\n", "\\n")
 }

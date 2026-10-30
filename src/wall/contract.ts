@@ -250,3 +250,42 @@ export function parseRecord(record: unknown): Record<string, unknown> | null {
 export function kindVariants(kind: string): string[] {
 	return [kind, JSON.stringify(kind)];
 }
+
+// --- logs: the browser over `entries` -------------------------------------
+
+/**
+ * One ledger entry, rendered. `text` is the human line (see `logs.ts`); `raw` is
+ * the record exactly as the ledger stores it, so the wall can expand the row
+ * without a second request. `thread` and `spill` are absent when not applicable —
+ * absent, not `null`, so the UI's "no expander" case is one check.
+ */
+export type LogEntry = {
+	id: number;
+	kind: string;
+	at: string | null;
+	text: string;
+	thread?: string;
+	spill?: string;
+	raw: string;
+};
+
+export type LogsReport = {
+	v: typeof VERSION;
+	ok: boolean;
+	error: string | null;
+	generated_at: string;
+	entries: LogEntry[];
+	/** Cursor for the next page (`before=<next_before>`); absent at the archive start. */
+	next_before?: number;
+};
+
+export type SpillReport = {
+	v: typeof VERSION;
+	ok: boolean;
+	error: string | null;
+	generated_at: string;
+	path: string | null;
+	bytes: number | null;
+	truncated: boolean;
+	text: string | null;
+};

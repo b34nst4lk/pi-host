@@ -9,11 +9,14 @@ import * as $element from "../../lustre/lustre/element.mjs";
 import { text } from "../../lustre/lustre/element.mjs";
 import * as $html from "../../lustre/lustre/element/html.mjs";
 import * as $svg from "../../lustre/lustre/element/svg.mjs";
+import * as $event from "../../lustre/lustre/event.mjs";
 import {
+  Ok,
   toList,
   Empty as $Empty,
   List$Empty$const as $List$Empty$const,
   prepend as listPrepend,
+  isEqual,
 } from "../gleam.mjs";
 import * as $model from "../wall/model.mjs";
 
@@ -23,6 +26,329 @@ function footer(current) {
     listPrepend(
       text(("poll #" + $int.to_string(current.polls)) + " · contract v1"),
       $List$Empty$const,
+    ),
+  );
+}
+
+function element_none() {
+  return $html.span(
+    listPrepend($attribute.class$("hidden"), $List$Empty$const),
+    $List$Empty$const,
+  );
+}
+
+function spill_text(logs, id) {
+  let $ = $list.key_find(logs.spills, id);
+  if ($ instanceof Ok) {
+    let text$1 = $[0];
+    return text$1;
+  } else {
+    return "press to load";
+  }
+}
+
+/**
+ * A row whose record spilled its full output: the expander fetches
+ * `/api/spill?path=…` once, then shows what came back (or why it did not).
+ * 
+ * @ignore
+ */
+function spill_block(logs, entry) {
+  let $ = entry.spill;
+  if ($ instanceof Some) {
+    let path = $[0];
+    return $html.details(
+      listPrepend($attribute.class$("log-spill"), $List$Empty$const),
+      listPrepend(
+        $html.summary(
+          listPrepend(
+            $attribute.class$("spill-head"),
+            listPrepend(
+              $event.on_click(new $model.SpillRequested(entry.id, path)),
+              $List$Empty$const,
+            ),
+          ),
+          listPrepend(text("full output · " + path), $List$Empty$const),
+        ),
+        listPrepend(
+          $html.pre(
+            listPrepend($attribute.class$("spill-body"), $List$Empty$const),
+            listPrepend(text(spill_text(logs, entry.id)), $List$Empty$const),
+          ),
+          $List$Empty$const,
+        ),
+      ),
+    );
+  } else {
+    return element_none();
+  }
+}
+
+function kind_class(kind) {
+  if (kind === "pi.user") {
+    return "kind-user";
+  } else if (kind === "pi.assistant") {
+    return "kind-assistant";
+  } else if (kind === "pi.tool-result") {
+    return "kind-tool";
+  } else if (kind === "pi.compaction") {
+    return "kind-compaction";
+  } else if (kind === "pi.system") {
+    return "kind-system";
+  } else {
+    return "kind-app";
+  }
+}
+
+function log_row(logs, entry) {
+  return $html.details(
+    listPrepend($attribute.class$("log-row"), $List$Empty$const),
+    listPrepend(
+      $html.summary(
+        listPrepend($attribute.class$("log-head"), $List$Empty$const),
+        listPrepend(
+          $html.span(
+            listPrepend($attribute.class$("log-at"), $List$Empty$const),
+            listPrepend(text($model.short_time(entry.at)), $List$Empty$const),
+          ),
+          listPrepend(
+            $html.span(
+              listPrepend(
+                $attribute.class$("log-kind " + kind_class(entry.kind)),
+                $List$Empty$const,
+              ),
+              listPrepend(text(entry.kind), $List$Empty$const),
+            ),
+            listPrepend(
+              (() => {
+                let $ = entry.thread;
+                if ($ instanceof Some) {
+                  let name = $[0];
+                  return $html.span(
+                    listPrepend(
+                      $attribute.class$("log-thread"),
+                      $List$Empty$const,
+                    ),
+                    listPrepend(text("@" + name), $List$Empty$const),
+                  );
+                } else {
+                  return element_none();
+                }
+              })(),
+              listPrepend(
+                $html.span(
+                  listPrepend($attribute.class$("log-text"), $List$Empty$const),
+                  listPrepend(text(entry.text), $List$Empty$const),
+                ),
+                $List$Empty$const,
+              ),
+            ),
+          ),
+        ),
+      ),
+      listPrepend(
+        $html.pre(
+          listPrepend($attribute.class$("log-raw"), $List$Empty$const),
+          listPrepend(text(entry.raw), $List$Empty$const),
+        ),
+        listPrepend(spill_block(logs, entry), $List$Empty$const),
+      ),
+    ),
+  );
+}
+
+function log_rows(logs) {
+  let $ = logs.entries;
+  if ($ instanceof $Empty) {
+    return $html.p(
+      listPrepend($attribute.class$("muted"), $List$Empty$const),
+      listPrepend(text("no entries match"), $List$Empty$const),
+    );
+  } else {
+    let entries = $;
+    return $html.div(
+      listPrepend($attribute.class$("log-rows"), $List$Empty$const),
+      $list.map(entries, (entry) => { return log_row(logs, entry); }),
+    );
+  }
+}
+
+function chip_class(active) {
+  if (active) {
+    return "chip active";
+  } else {
+    return "chip";
+  }
+}
+
+function kind_chips(filters) {
+  return $list.map(
+    $model.log_kinds,
+    (kind) => {
+      return $html.button(
+        listPrepend(
+          $attribute.attribute("type", "button"),
+          listPrepend(
+            $attribute.class$(chip_class($list.contains(filters.kinds, kind))),
+            listPrepend(
+              $event.on_click(new $model.KindToggled(kind)),
+              $List$Empty$const,
+            ),
+          ),
+        ),
+        listPrepend(text(kind), $List$Empty$const),
+      );
+    },
+  );
+}
+
+function or_default_logs(logs) {
+  if (logs instanceof Some) {
+    let logs$1 = logs[0];
+    return logs$1;
+  } else {
+    return $model.empty_logs();
+  }
+}
+
+/**
+ * The ledger browser: a filter row, then newest-first rows. Every row is a
+ * `<details>` whose first child is the human line — so the raw record is one
+ * click away and never in the way.
+ * 
+ * @ignore
+ */
+function logs_tab(current) {
+  let logs = or_default_logs(current.logs);
+  return $html.section(
+    listPrepend($attribute.class$("logs"), $List$Empty$const),
+    listPrepend(
+      $html.div(
+        listPrepend($attribute.class$("log-controls"), $List$Empty$const),
+        listPrepend(
+          $html.div(
+            listPrepend($attribute.class$("chips"), $List$Empty$const),
+            $list.map(
+              listPrepend(
+                $model.Direction$BothWays$const,
+                listPrepend(
+                  $model.Direction$Incoming$const,
+                  listPrepend(
+                    $model.Direction$Outgoing$const,
+                    $List$Empty$const,
+                  ),
+                ),
+              ),
+              (direction) => {
+                return $html.button(
+                  listPrepend(
+                    $attribute.attribute("type", "button"),
+                    listPrepend(
+                      $attribute.class$(
+                        chip_class(
+                          isEqual(current.filters.direction, direction),
+                        ),
+                      ),
+                      listPrepend(
+                        $event.on_click(new $model.DirectionChosen(direction)),
+                        $List$Empty$const,
+                      ),
+                    ),
+                  ),
+                  listPrepend(
+                    text($model.direction_label(direction)),
+                    $List$Empty$const,
+                  ),
+                );
+              },
+            ),
+          ),
+          listPrepend(
+            $html.div(
+              listPrepend($attribute.class$("chips"), $List$Empty$const),
+              kind_chips(current.filters),
+            ),
+            listPrepend(
+              $html.input(
+                listPrepend(
+                  $attribute.attribute("type", "search"),
+                  listPrepend(
+                    $attribute.attribute("placeholder", "search the ledger"),
+                    listPrepend(
+                      $attribute.attribute("value", current.filters.query),
+                      listPrepend(
+                        $attribute.class$("search"),
+                        listPrepend(
+                          $event.on_input(
+                            (var0) => { return new $model.QueryChanged(var0); },
+                          ),
+                          $List$Empty$const,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              listPrepend(
+                $html.button(
+                  listPrepend(
+                    $attribute.attribute("type", "button"),
+                    listPrepend(
+                      $attribute.class$("older"),
+                      listPrepend(
+                        $event.on_click($model.Msg$OlderRequested$const),
+                        $List$Empty$const,
+                      ),
+                    ),
+                  ),
+                  listPrepend(text("older"), $List$Empty$const),
+                ),
+                $List$Empty$const,
+              ),
+            ),
+          ),
+        ),
+      ),
+      listPrepend(
+        $html.p(
+          listPrepend($attribute.class$("log-line"), $List$Empty$const),
+          listPrepend(text($model.logs_line(logs)), $List$Empty$const),
+        ),
+        listPrepend(
+          (() => {
+            let $ = logs.error;
+            if ($ instanceof Some) {
+              let problem = $[0];
+              return $html.p(
+                listPrepend($attribute.class$("banner"), $List$Empty$const),
+                listPrepend(text(problem), $List$Empty$const),
+              );
+            } else {
+              return element_none();
+            }
+          })(),
+          listPrepend(
+            log_rows(logs),
+            listPrepend(
+              (() => {
+                let $ = logs.next_before;
+                if ($ instanceof Some) {
+                  return $html.p(
+                    listPrepend($attribute.class$("muted"), $List$Empty$const),
+                    listPrepend(
+                      text("older entries available"),
+                      $List$Empty$const,
+                    ),
+                  );
+                } else {
+                  return element_none();
+                }
+              })(),
+              $List$Empty$const,
+            ),
+          ),
+        ),
+      ),
     ),
   );
 }
@@ -135,13 +461,6 @@ function queue_card(current) {
         ),
       ),
     ),
-  );
-}
-
-function element_none() {
-  return $html.span(
-    listPrepend($attribute.class$("hidden"), $List$Empty$const),
-    $List$Empty$const,
   );
 }
 
@@ -340,36 +659,7 @@ function agents_card(current) {
                 );
               }
             })(),
-            listPrepend(
-              orphans_row(agents),
-              listPrepend(
-                (() => {
-                  let $ = agents.retired;
-                  if ($ instanceof Some) {
-                    let count = $[0];
-                    if (count > 0) {
-                      return $html.p(
-                        listPrepend(
-                          $attribute.class$("muted"),
-                          $List$Empty$const,
-                        ),
-                        listPrepend(
-                          text(
-                            $model.format_count(new Some(count)) + " retired anchor(s) not shown",
-                          ),
-                          $List$Empty$const,
-                        ),
-                      );
-                    } else {
-                      return element_none();
-                    }
-                  } else {
-                    return element_none();
-                  }
-                })(),
-                $List$Empty$const,
-              ),
-            ),
+            listPrepend(orphans_row(agents), $List$Empty$const),
           ),
         ),
       ),
@@ -670,6 +960,19 @@ function vitals_card(current) {
       stat("daemon uptime", $model.format_age(vitals.daemon_uptime_s)),
       stat("container uptime", $model.format_age(vitals.container_uptime_s)),
       (() => {
+        let $ = current.agents;
+        if ($ instanceof $option.Some) {
+          let agents = $[0];
+          if (!isEqual(agents.retired, new $option.Some(0))) {
+            return stat("retired agents", $model.format_count(agents.retired));
+          } else {
+            return element_none();
+          }
+        } else {
+          return element_none();
+        }
+      })(),
+      (() => {
         let $ = vitals.last_error;
         if ($ instanceof Some) {
           let message = $[0];
@@ -682,6 +985,22 @@ function vitals_card(current) {
         }
       })(),
     ]),
+  );
+}
+
+function dashboard(current) {
+  return $html.div(
+    listPrepend($attribute.class$("grid"), $List$Empty$const),
+    listPrepend(
+      vitals_card(current),
+      listPrepend(
+        spend_card(current),
+        listPrepend(
+          agents_card(current),
+          listPrepend(queue_card(current), $List$Empty$const),
+        ),
+      ),
+    ),
   );
 }
 
@@ -705,6 +1024,15 @@ function mode_label(mode) {
   }
 }
 
+function tab_class(showing, tab) {
+  let $ = isEqual(showing, tab);
+  if ($) {
+    return "tab active";
+  } else {
+    return "tab";
+  }
+}
+
 function header(current) {
   return $html.header(
     listPrepend($attribute.class$("head"), $List$Empty$const),
@@ -714,11 +1042,40 @@ function header(current) {
         listPrepend(text("THE WALL"), $List$Empty$const),
       ),
       listPrepend(
-        $html.span(
-          listPrepend($attribute.class$("mode"), $List$Empty$const),
-          listPrepend(text(mode_label(current.mode)), $List$Empty$const),
+        $html.nav(
+          listPrepend($attribute.class$("tabs"), $List$Empty$const),
+          $list.map(
+            listPrepend(
+              $model.Tab$Dashboard$const,
+              listPrepend($model.Tab$LogsTab$const, $List$Empty$const),
+            ),
+            (tab) => {
+              return $html.button(
+                listPrepend(
+                  $attribute.attribute("type", "button"),
+                  listPrepend(
+                    $attribute.class$(tab_class(current.tab, tab)),
+                    listPrepend(
+                      $event.on_click(new $model.TabChosen(tab)),
+                      $List$Empty$const,
+                    ),
+                  ),
+                ),
+                listPrepend(
+                  text($string.uppercase($model.tab_label(tab))),
+                  $List$Empty$const,
+                ),
+              );
+            },
+          ),
         ),
-        $List$Empty$const,
+        listPrepend(
+          $html.span(
+            listPrepend($attribute.class$("mode"), $List$Empty$const),
+            listPrepend(text(mode_label(current.mode)), $List$Empty$const),
+          ),
+          $List$Empty$const,
+        ),
       ),
     ),
   );
@@ -732,19 +1089,14 @@ export function view(current) {
       listPrepend(
         banner(current.error),
         listPrepend(
-          $html.div(
-            listPrepend($attribute.class$("grid"), $List$Empty$const),
-            listPrepend(
-              vitals_card(current),
-              listPrepend(
-                spend_card(current),
-                listPrepend(
-                  agents_card(current),
-                  listPrepend(queue_card(current), $List$Empty$const),
-                ),
-              ),
-            ),
-          ),
+          (() => {
+            let $ = current.tab;
+            if ($ instanceof $model.Dashboard) {
+              return dashboard(current);
+            } else {
+              return logs_tab(current);
+            }
+          })(),
           listPrepend(footer(current), $List$Empty$const),
         ),
       ),

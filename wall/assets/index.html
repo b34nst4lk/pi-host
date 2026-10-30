@@ -94,6 +94,84 @@
       .last-error { color: var(--stale); font-size: 11px; overflow-wrap: anywhere; margin: 10px 0 0; }
       .errors { margin: 10px 0 0; padding-left: 16px; color: var(--dim); font-size: 11px; }
       .hidden { display: none; }
+      /* --- tabs ------------------------------------------------------- */
+      .tabs { display: flex; gap: 6px; }
+      .tab {
+        background: none;
+        border: 1px solid var(--line);
+        border-radius: 3px;
+        color: var(--dim);
+        cursor: pointer;
+        font: inherit;
+        font-size: 11px;
+        letter-spacing: 0.12em;
+        padding: 2px 8px;
+      }
+      .tab.active { color: var(--ink); border-color: var(--accent); }
+      /* --- the LOGS browser ------------------------------------------- */
+      .logs { display: grid; gap: 10px; }
+      .log-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+      .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+      .chip {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 3px;
+        color: var(--dim);
+        cursor: pointer;
+        font: inherit;
+        font-size: 11px;
+        padding: 2px 7px;
+      }
+      .chip.active { color: var(--bg); background: var(--accent); border-color: var(--accent); }
+      .search {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 3px;
+        color: var(--ink);
+        font: inherit;
+        font-size: 12px;
+        padding: 3px 8px;
+        flex: 1 1 180px;
+        min-width: 120px;
+      }
+      .older {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 3px;
+        color: var(--dim);
+        cursor: pointer;
+        font: inherit;
+        font-size: 11px;
+        padding: 2px 8px;
+      }
+      .log-line { margin: 0; color: var(--dim); font-size: 11px; letter-spacing: 0.06em; }
+      .log-rows { display: grid; gap: 2px; }
+      .log-row { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 6px 10px; }
+      .log-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; cursor: pointer; }
+      .log-at { color: var(--dim); font-variant-numeric: tabular-nums; }
+      .log-kind { font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; }
+      .kind-user { color: var(--live); }
+      .kind-assistant { color: var(--accent); }
+      .kind-tool { color: var(--slow); }
+      .kind-compaction, .kind-system { color: var(--dim); }
+      .kind-app { color: var(--stale); }
+      .log-thread { color: var(--accent); font-size: 11px; }
+      .log-text { flex: 1 1 240px; overflow-wrap: anywhere; }
+      .log-raw, .spill-body {
+        margin: 8px 0 0;
+        padding: 8px;
+        background: var(--bg);
+        border: 1px solid var(--line);
+        border-radius: 3px;
+        color: var(--dim);
+        font-size: 11px;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        max-height: 320px;
+        overflow: auto;
+      }
+      .log-spill { margin-top: 6px; }
+      .spill-head { color: var(--slow); cursor: pointer; font-size: 11px; overflow-wrap: anywhere; }
       .foot { margin-top: 20px; color: var(--dim); font-size: 11px; }
     </style>
   </head>

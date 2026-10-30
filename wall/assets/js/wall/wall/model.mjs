@@ -6,6 +6,7 @@ import { Some, Option$None$const } from "../../gleam_stdlib/gleam/option.mjs";
 import * as $result from "../../gleam_stdlib/gleam/result.mjs";
 import * as $string from "../../gleam_stdlib/gleam/string.mjs";
 import {
+  Empty as $Empty,
   List$Empty$const as $List$Empty$const,
   prepend as listPrepend,
   CustomType as $CustomType,
@@ -275,7 +276,7 @@ export const Mode$FakeMode = () => Mode$FakeMode$const;
 export const Mode$isFakeMode = (value) => value instanceof FakeMode;
 
 export class Model extends $CustomType {
-  constructor(mode, vitals, spend, agents, queue, samples, polls, error) {
+  constructor(mode, vitals, spend, agents, queue, samples, polls, error, tab, filters, logs) {
     super();
     this.mode = mode;
     this.vitals = vitals;
@@ -285,10 +286,23 @@ export class Model extends $CustomType {
     this.samples = samples;
     this.polls = polls;
     this.error = error;
+    this.tab = tab;
+    this.filters = filters;
+    this.logs = logs;
   }
 }
-export const Model$Model = (mode, vitals, spend, agents, queue, samples, polls, error) =>
-  new Model(mode, vitals, spend, agents, queue, samples, polls, error);
+export const Model$Model = (mode, vitals, spend, agents, queue, samples, polls, error, tab, filters, logs) =>
+  new Model(mode,
+  vitals,
+  spend,
+  agents,
+  queue,
+  samples,
+  polls,
+  error,
+  tab,
+  filters,
+  logs);
 export const Model$isModel = (value) => value instanceof Model;
 export const Model$Model$mode = (value) => value.mode;
 export const Model$Model$0 = (value) => value.mode;
@@ -306,6 +320,12 @@ export const Model$Model$polls = (value) => value.polls;
 export const Model$Model$6 = (value) => value.polls;
 export const Model$Model$error = (value) => value.error;
 export const Model$Model$7 = (value) => value.error;
+export const Model$Model$tab = (value) => value.tab;
+export const Model$Model$8 = (value) => value.tab;
+export const Model$Model$filters = (value) => value.filters;
+export const Model$Model$9 = (value) => value.filters;
+export const Model$Model$logs = (value) => value.logs;
+export const Model$Model$10 = (value) => value.logs;
 
 /**
  * Poll the reader (`Live`) or nudge the fixtures (`Fake`).
@@ -351,6 +371,201 @@ export const Msg$ToggleMode = () => Msg$ToggleMode$const;
 export const Msg$isToggleMode = (value) => value instanceof ToggleMode;
 
 /**
+ * The logs tab: which half shows, what the query is, and the pages it got.
+ */
+export class TabChosen extends $CustomType {
+  constructor($0) {
+    super();
+    this[0] = $0;
+  }
+}
+export const Msg$TabChosen = ($0) => new TabChosen($0);
+export const Msg$isTabChosen = (value) => value instanceof TabChosen;
+export const Msg$TabChosen$0 = (value) => value[0];
+
+export class DirectionChosen extends $CustomType {
+  constructor($0) {
+    super();
+    this[0] = $0;
+  }
+}
+export const Msg$DirectionChosen = ($0) => new DirectionChosen($0);
+export const Msg$isDirectionChosen = (value) =>
+  value instanceof DirectionChosen;
+export const Msg$DirectionChosen$0 = (value) => value[0];
+
+export class KindToggled extends $CustomType {
+  constructor($0) {
+    super();
+    this[0] = $0;
+  }
+}
+export const Msg$KindToggled = ($0) => new KindToggled($0);
+export const Msg$isKindToggled = (value) => value instanceof KindToggled;
+export const Msg$KindToggled$0 = (value) => value[0];
+
+export class QueryChanged extends $CustomType {
+  constructor($0) {
+    super();
+    this[0] = $0;
+  }
+}
+export const Msg$QueryChanged = ($0) => new QueryChanged($0);
+export const Msg$isQueryChanged = (value) => value instanceof QueryChanged;
+export const Msg$QueryChanged$0 = (value) => value[0];
+
+export class OlderRequested extends $CustomType {}
+export const Msg$OlderRequested$const = new OlderRequested();
+export const Msg$OlderRequested = () => Msg$OlderRequested$const;
+export const Msg$isOlderRequested = (value) => value instanceof OlderRequested;
+
+export class LogsArrived extends $CustomType {
+  constructor($0) {
+    super();
+    this[0] = $0;
+  }
+}
+export const Msg$LogsArrived = ($0) => new LogsArrived($0);
+export const Msg$isLogsArrived = (value) => value instanceof LogsArrived;
+export const Msg$LogsArrived$0 = (value) => value[0];
+
+export class SpillRequested extends $CustomType {
+  constructor($0, $1) {
+    super();
+    this[0] = $0;
+    this[1] = $1;
+  }
+}
+export const Msg$SpillRequested = ($0, $1) => new SpillRequested($0, $1);
+export const Msg$isSpillRequested = (value) => value instanceof SpillRequested;
+export const Msg$SpillRequested$0 = (value) => value[0];
+export const Msg$SpillRequested$1 = (value) => value[1];
+
+export class SpillArrived extends $CustomType {
+  constructor($0, $1) {
+    super();
+    this[0] = $0;
+    this[1] = $1;
+  }
+}
+export const Msg$SpillArrived = ($0, $1) => new SpillArrived($0, $1);
+export const Msg$isSpillArrived = (value) => value instanceof SpillArrived;
+export const Msg$SpillArrived$0 = (value) => value[0];
+export const Msg$SpillArrived$1 = (value) => value[1];
+
+export class SpillFailed extends $CustomType {
+  constructor($0, $1) {
+    super();
+    this[0] = $0;
+    this[1] = $1;
+  }
+}
+export const Msg$SpillFailed = ($0, $1) => new SpillFailed($0, $1);
+export const Msg$isSpillFailed = (value) => value instanceof SpillFailed;
+export const Msg$SpillFailed$0 = (value) => value[0];
+export const Msg$SpillFailed$1 = (value) => value[1];
+
+export class Dashboard extends $CustomType {}
+export const Tab$Dashboard$const = new Dashboard();
+export const Tab$Dashboard = () => Tab$Dashboard$const;
+export const Tab$isDashboard = (value) => value instanceof Dashboard;
+
+export class LogsTab extends $CustomType {}
+export const Tab$LogsTab$const = new LogsTab();
+export const Tab$LogsTab = () => Tab$LogsTab$const;
+export const Tab$isLogsTab = (value) => value instanceof LogsTab;
+
+export class BothWays extends $CustomType {}
+export const Direction$BothWays$const = new BothWays();
+export const Direction$BothWays = () => Direction$BothWays$const;
+export const Direction$isBothWays = (value) => value instanceof BothWays;
+
+export class Incoming extends $CustomType {}
+export const Direction$Incoming$const = new Incoming();
+export const Direction$Incoming = () => Direction$Incoming$const;
+export const Direction$isIncoming = (value) => value instanceof Incoming;
+
+export class Outgoing extends $CustomType {}
+export const Direction$Outgoing$const = new Outgoing();
+export const Direction$Outgoing = () => Direction$Outgoing$const;
+export const Direction$isOutgoing = (value) => value instanceof Outgoing;
+
+export class LogFilters extends $CustomType {
+  constructor(kinds, direction, query) {
+    super();
+    this.kinds = kinds;
+    this.direction = direction;
+    this.query = query;
+  }
+}
+export const LogFilters$LogFilters = (kinds, direction, query) =>
+  new LogFilters(kinds, direction, query);
+export const LogFilters$isLogFilters = (value) => value instanceof LogFilters;
+export const LogFilters$LogFilters$kinds = (value) => value.kinds;
+export const LogFilters$LogFilters$0 = (value) => value.kinds;
+export const LogFilters$LogFilters$direction = (value) => value.direction;
+export const LogFilters$LogFilters$1 = (value) => value.direction;
+export const LogFilters$LogFilters$query = (value) => value.query;
+export const LogFilters$LogFilters$2 = (value) => value.query;
+
+export class LogEntry extends $CustomType {
+  constructor(id, kind, at, text, thread, spill, raw) {
+    super();
+    this.id = id;
+    this.kind = kind;
+    this.at = at;
+    this.text = text;
+    this.thread = thread;
+    this.spill = spill;
+    this.raw = raw;
+  }
+}
+export const LogEntry$LogEntry = (id, kind, at, text, thread, spill, raw) =>
+  new LogEntry(id, kind, at, text, thread, spill, raw);
+export const LogEntry$isLogEntry = (value) => value instanceof LogEntry;
+export const LogEntry$LogEntry$id = (value) => value.id;
+export const LogEntry$LogEntry$0 = (value) => value.id;
+export const LogEntry$LogEntry$kind = (value) => value.kind;
+export const LogEntry$LogEntry$1 = (value) => value.kind;
+export const LogEntry$LogEntry$at = (value) => value.at;
+export const LogEntry$LogEntry$2 = (value) => value.at;
+export const LogEntry$LogEntry$text = (value) => value.text;
+export const LogEntry$LogEntry$3 = (value) => value.text;
+export const LogEntry$LogEntry$thread = (value) => value.thread;
+export const LogEntry$LogEntry$4 = (value) => value.thread;
+export const LogEntry$LogEntry$spill = (value) => value.spill;
+export const LogEntry$LogEntry$5 = (value) => value.spill;
+export const LogEntry$LogEntry$raw = (value) => value.raw;
+export const LogEntry$LogEntry$6 = (value) => value.raw;
+
+export class Logs extends $CustomType {
+  constructor(entries, next_before, tailing, appending, spills, error) {
+    super();
+    this.entries = entries;
+    this.next_before = next_before;
+    this.tailing = tailing;
+    this.appending = appending;
+    this.spills = spills;
+    this.error = error;
+  }
+}
+export const Logs$Logs = (entries, next_before, tailing, appending, spills, error) =>
+  new Logs(entries, next_before, tailing, appending, spills, error);
+export const Logs$isLogs = (value) => value instanceof Logs;
+export const Logs$Logs$entries = (value) => value.entries;
+export const Logs$Logs$0 = (value) => value.entries;
+export const Logs$Logs$next_before = (value) => value.next_before;
+export const Logs$Logs$1 = (value) => value.next_before;
+export const Logs$Logs$tailing = (value) => value.tailing;
+export const Logs$Logs$2 = (value) => value.tailing;
+export const Logs$Logs$appending = (value) => value.appending;
+export const Logs$Logs$3 = (value) => value.appending;
+export const Logs$Logs$spills = (value) => value.spills;
+export const Logs$Logs$4 = (value) => value.spills;
+export const Logs$Logs$error = (value) => value.error;
+export const Logs$Logs$5 = (value) => value.error;
+
+/**
  * How many polls of history the sparklines keep (60 × 10 s = 10 minutes).
  */
 export const history_length = 60;
@@ -377,6 +592,32 @@ export const agent_states = /* @__PURE__ */ listPrepend(
   ),
 );
 
+/**
+ * The kind chips. `app.*` is a prefix the reader understands.
+ */
+export const log_kinds = /* @__PURE__ */ listPrepend(
+  "pi.user",
+  listPrepend(
+    "pi.assistant",
+    listPrepend(
+      "pi.tool-result",
+      listPrepend(
+        "pi.compaction",
+        listPrepend("pi.system", listPrepend("app.*", $List$Empty$const)),
+      ),
+    ),
+  ),
+);
+
+/**
+ * One page. The reader's default is 50 and its ceiling 200; the tab asks for 50.
+ */
+export const log_limit = 50;
+
+export function empty_filters() {
+  return new LogFilters($List$Empty$const, Direction$BothWays$const, "");
+}
+
 export function initial(mode) {
   return new Model(
     mode,
@@ -386,6 +627,9 @@ export function initial(mode) {
     Option$None$const,
     $List$Empty$const,
     0,
+    Option$None$const,
+    Tab$Dashboard$const,
+    empty_filters(),
     Option$None$const,
   );
 }
@@ -765,5 +1009,202 @@ export function orphan_summary(agents) {
   } else {
     let count = $;
     return $int.to_string(count) + " unnamed (prunable)";
+  }
+}
+
+export function empty_logs() {
+  return new Logs(
+    $List$Empty$const,
+    Option$None$const,
+    true,
+    false,
+    $List$Empty$const,
+    Option$None$const,
+  );
+}
+
+export function tab_label(tab) {
+  if (tab instanceof Dashboard) {
+    return "dashboard";
+  } else {
+    return "logs";
+  }
+}
+
+export function direction_label(direction) {
+  if (direction instanceof BothWays) {
+    return "all";
+  } else if (direction instanceof Incoming) {
+    return "in";
+  } else {
+    return "out";
+  }
+}
+
+/**
+ * What the direction means in the reader's vocabulary: `in` is the user's
+ * steers, `out` is what the agent and the apps write.
+ */
+export function direction_kinds(direction) {
+  if (direction instanceof BothWays) {
+    return $List$Empty$const;
+  } else if (direction instanceof Incoming) {
+    return listPrepend("pi.user", $List$Empty$const);
+  } else {
+    return listPrepend("pi.assistant", listPrepend("app.*", $List$Empty$const));
+  }
+}
+
+function kind_matches(pattern, kind) {
+  if (pattern === "app.*") {
+    return $string.starts_with(kind, "app.");
+  } else {
+    return pattern === kind;
+  }
+}
+
+/**
+ * The `kind=` list actually sent. Chips narrow the direction; a combination
+ * that cannot match anything asks for a kind nobody wrote, so the tab shows an
+ * empty page instead of silently showing everything.
+ */
+export function effective_kinds(filters) {
+  let $ = direction_kinds(filters.direction);
+  let $1 = filters.kinds;
+  if ($ instanceof $Empty) {
+    if ($1 instanceof $Empty) {
+      return $;
+    } else {
+      return $1;
+    }
+  } else if ($1 instanceof $Empty) {
+    return $;
+  } else {
+    let directed = $;
+    let chips = $1;
+    let kept = $list.filter(
+      chips,
+      (chip) => {
+        return $list.any(
+          directed,
+          (directed_kind) => { return kind_matches(directed_kind, chip); },
+        );
+      },
+    );
+    if (kept instanceof $Empty) {
+      return listPrepend("(no such kind)", $List$Empty$const);
+    } else {
+      return kept;
+    }
+  }
+}
+
+/**
+ * Percent-encode the characters that would otherwise change the query. Bytes
+ * above ASCII are left alone: `fetch` encodes them, and the reader decodes them.
+ */
+export function url_encode(value) {
+  let _pipe = value;
+  let _pipe$1 = $string.to_graphemes(_pipe);
+  let _pipe$2 = $list.map(
+    _pipe$1,
+    (character) => {
+      if (character === " ") {
+        return "%20";
+      } else if (character === "%") {
+        return "%25";
+      } else if (character === "&") {
+        return "%26";
+      } else if (character === "#") {
+        return "%23";
+      } else if (character === "+") {
+        return "%2B";
+      } else if (character === "=") {
+        return "%3D";
+      } else if (character === "?") {
+        return "%3F";
+      } else if (character === "/") {
+        return "%2F";
+      } else if (character === ",") {
+        return "%2C";
+      } else {
+        return character;
+      }
+    },
+  );
+  return $string.join(_pipe$2, "");
+}
+
+/**
+ * The reader URL for one page. The tab always asks `dir=desc` (newest first);
+ * `asc` exists for the contract, not for this view.
+ */
+export function logs_path(filters, before, limit) {
+  let head = ("/api/logs?limit=" + $int.to_string(limit)) + "&dir=desc";
+  let kinds = effective_kinds(filters);
+  let _block;
+  let $ = $list.length(kinds);
+  if ($ === 0) {
+    _block = "";
+  } else {
+    _block = "&kind=" + $string.join($list.map(kinds, url_encode), ",");
+  }
+  let kind_part = _block;
+  let _block$1;
+  if (before instanceof Some) {
+    let id = before[0];
+    _block$1 = "&before=" + $int.to_string(id);
+  } else {
+    _block$1 = "";
+  }
+  let before_part = _block$1;
+  let _block$2;
+  let $1 = $string.trim(filters.query);
+  if ($1 === "") {
+    _block$2 = $1;
+  } else {
+    let query = $1;
+    _block$2 = "&q=" + url_encode(query);
+  }
+  let query_part = _block$2;
+  return ((head + kind_part) + before_part) + query_part;
+}
+
+/**
+ * `3 entries · live tail` / `50 entries · paged back`.
+ */
+export function logs_line(logs) {
+  let count = $list.length(logs.entries);
+  return ($int.to_string(count) + (() => {
+    if (count === 1) {
+      return " entry";
+    } else {
+      return " entries";
+    }
+  })()) + (() => {
+    let $ = logs.tailing;
+    if ($) {
+      return " · live tail";
+    } else {
+      return " · paged back";
+    }
+  })();
+}
+
+/**
+ * `12:34:56` from an ISO timestamp; the date is already in the ledger's own
+ * ordering, and the row's raw record carries the full value.
+ */
+export function short_time(at) {
+  if (at instanceof Some) {
+    let iso = at[0];
+    let $ = $string.length(iso) >= 19;
+    if ($) {
+      return $string.slice(iso, 11, 8);
+    } else {
+      return iso;
+    }
+  } else {
+    return "—";
   }
 }

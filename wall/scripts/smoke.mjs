@@ -7,6 +7,9 @@ const app = await load("wall.mjs");
 const model = await load("wall/model.mjs");
 const fake = await load("wall/fake.mjs");
 const { view } = await load("wall/view.mjs");
+// Option is the stdlib's: import it from the same tree so `Some` is unwrapped the
+// way Gleam unwraps it instead of guessed at.
+const option = await import(new URL("../gleam_stdlib/gleam/option.mjs", assets));
 
 const list = (l, f) => {
   const out = [];
@@ -33,7 +36,22 @@ for (const poll of [0, 1, 2, 3, 4]) {
   state = app.update(state, new model.SpendArrived(fake.spend_json(poll)))[0];
 }
 
-const html = flatten(view(state));
+// the dashboard first...
+const dashboard = flatten(view(state));
+// ...then the LOGS tab, driven through the same update function the browser uses:
+// choose the tab, take a page of fixtures, expand one row's full output.
+state = app.update(state, new model.TabChosen(new model.LogsTab()))[0];
+state = app.update(state, new model.LogsArrived(fake.logs_json(state.filters, 0)))[0];
+// Some is a box with one field; None is a constant, so there is nothing to read.
+const some = (value) => (option.Option$isSome(value) ? option.Option$Some$0(value) : undefined);
+const entries = list(some(state.logs).entries, (entry) => entry);
+const spilled = entries.find((entry) => option.Option$isSome(entry.spill));
+state = app.update(
+  state,
+  new model.SpillArrived(spilled.id, fake.spill_json()),
+)[0];
+const logs = flatten(view(state));
+const html = dashboard + logs;
 const text = html.replace(/<[^>]+>/g, " ");
 const needles = [
   "THE WALL",
@@ -56,16 +74,30 @@ const needles = [
   "badge state-alive",
   "unnamed (prunable)",
   "last answer #2393",
-  "retired anchor(s) not shown",
+  "retired agents",
+  // round 3: the tabs and the logs browser
+  ">LOGS<",
+  ">DASHBOARD<",
+  "log-rows",
+  "log-raw",
+  "answered: the wall is up",
+  "pi.tool-result",
+  "full output · ",
+  "line one",
+  "older entries available",
+  "search the ledger",
+  "kind-assistant",
 ];
 const missing = needles.filter((n) => !html.includes(n));
 const polylines = (html.match(/<polyline/g) || []).length;
 const banner = text.includes("unexpected response shape");
 const samples = list(state.samples, (s) => s).length;
 
-console.log("polls:", state.polls, "| samples:", samples, "| polylines:", polylines);
+const rows = (logs.match(/log-row/g) || []).length;
+console.log("polls:", state.polls, "| samples:", samples, "| polylines:", polylines, "| log rows:", rows);
 console.log("rendered html:", html.length, "chars");
 console.log("missing markers:", missing.length ? missing.join(", ") : "none");
 console.log("error banner:", banner);
-console.log(!missing.length && polylines >= 2 && !banner && samples === 5 ? "SMOKE PASS" : "SMOKE FAIL");
-if (missing.length || polylines < 2 || banner) process.exitCode = 1;
+const pass = !missing.length && polylines >= 2 && !banner && samples === 5 && rows >= 6;
+console.log(pass ? "SMOKE PASS" : "SMOKE FAIL");
+if (!pass) process.exitCode = 1;

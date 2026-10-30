@@ -2,8 +2,9 @@
 //// clock reads — everything the view needs is already in the model, which is why
 //// `gleeunit` can assert on strings this module produces.
 ////
-//// Layout: a header, an optional error banner, then a two-by-two grid of
-//// VITALS / SPEND / AGENTS / QUEUE.
+//// Layout: a header with two tabs, an optional error banner, then either the
+//// two-by-two grid of VITALS / SPEND / AGENTS / QUEUE or the full-width LOGS
+//// browser. One view function, so a tab switch is one message and no reload.
 
 import gleam/float
 import gleam/int
@@ -13,6 +14,7 @@ import gleam/string
 import lustre/attribute
 import lustre/element.{type Element, text}
 import lustre/element/html
+import lustre/event
 import lustre/element/svg
 import wall/model
 
@@ -20,21 +22,48 @@ pub fn view(current: model.Model) -> Element(model.Msg) {
   html.div([attribute.class("wall")], [
     header(current),
     banner(current.error),
-    html.div([attribute.class("grid")], [
-      vitals_card(current),
-      spend_card(current),
-      agents_card(current),
-      queue_card(current),
-    ]),
+    case current.tab {
+      model.Dashboard -> dashboard(current)
+      model.LogsTab -> logs_tab(current)
+    },
     footer(current),
+  ])
+}
+
+fn dashboard(current: model.Model) -> Element(model.Msg) {
+  html.div([attribute.class("grid")], [
+    vitals_card(current),
+    spend_card(current),
+    agents_card(current),
+    queue_card(current),
   ])
 }
 
 fn header(current: model.Model) -> Element(model.Msg) {
   html.header([attribute.class("head")], [
     html.h1([attribute.class("title")], [text("THE WALL")]),
+    html.nav(
+      [attribute.class("tabs")],
+      list.map([model.Dashboard, model.LogsTab], fn(tab) {
+        html.button(
+          [
+            attribute.attribute("type", "button"),
+            attribute.class(tab_class(current.tab, tab)),
+            event.on_click(model.TabChosen(tab)),
+          ],
+          [text(string.uppercase(model.tab_label(tab)))],
+        )
+      }),
+    ),
     html.span([attribute.class("mode")], [text(mode_label(current.mode))]),
   ])
+}
+
+fn tab_class(showing: model.Tab, tab: model.Tab) -> String {
+  case showing == tab {
+    True -> "tab active"
+    False -> "tab"
+  }
 }
 
 fn mode_label(mode: model.Mode) -> String {
@@ -68,6 +97,13 @@ fn vitals_card(current: model.Model) -> Element(model.Msg) {
     stat("daemon errors 24h", model.format_count(vitals.errors_24h)),
     stat("daemon uptime", model.format_age(vitals.daemon_uptime_s)),
     stat("container uptime", model.format_age(vitals.container_uptime_s)),
+    // Retired agents are a health fact, not a card: count them here. Only shown
+    // once something has actually retired.
+    case current.agents {
+      option.Some(agents) if agents.retired != option.Some(0) ->
+        stat("retired agents", model.format_count(agents.retired))
+      _ -> element_none()
+    },
     case vitals.last_error {
       Some(message) -> html.p([attribute.class("last-error")], [text(message)])
       None -> element_none()
@@ -128,12 +164,6 @@ fn agents_card(current: model.Model) -> Element(model.Msg) {
         }))
     },
     orphans_row(agents),
-    case agents.retired {
-      Some(count) if count > 0 -> html.p([attribute.class("muted")], [
-        text(model.format_count(Some(count)) <> " retired anchor(s) not shown"),
-      ])
-      _ -> element_none()
-    },
   ])
 }
 
@@ -354,5 +384,147 @@ fn or_default_queue(queue: Option(model.Queue)) -> model.Queue {
   case queue {
     Some(queue) -> queue
     None -> model.Queue(inbox_depth: None, running: None, pending: None, unanswered: None, errors: [])
+  }
+}
+
+// --- the logs tab ---------------------------------------------------------
+
+/// The ledger browser: a filter row, then newest-first rows. Every row is a
+/// `<details>` whose first child is the human line — so the raw record is one
+/// click away and never in the way.
+fn logs_tab(current: model.Model) -> Element(model.Msg) {
+  let logs = or_default_logs(current.logs)
+  html.section([attribute.class("logs")], [
+    html.div([attribute.class("log-controls")], [
+      html.div(
+        [attribute.class("chips")],
+        list.map([model.BothWays, model.Incoming, model.Outgoing], fn(direction) {
+          html.button(
+            [
+              attribute.attribute("type", "button"),
+              attribute.class(chip_class(current.filters.direction == direction)),
+              event.on_click(model.DirectionChosen(direction)),
+            ],
+            [text(model.direction_label(direction))],
+          )
+        }),
+      ),
+      html.div([attribute.class("chips")], kind_chips(current.filters)),
+      html.input([
+        attribute.attribute("type", "search"),
+        attribute.attribute("placeholder", "search the ledger"),
+        attribute.attribute("value", current.filters.query),
+        attribute.class("search"),
+        event.on_input(model.QueryChanged),
+      ]),
+      html.button(
+        [
+          attribute.attribute("type", "button"),
+          attribute.class("older"),
+          event.on_click(model.OlderRequested),
+        ],
+        [text("older")],
+      ),
+    ]),
+    html.p([attribute.class("log-line")], [text(model.logs_line(logs))]),
+    case logs.error {
+      Some(problem) -> html.p([attribute.class("banner")], [text(problem)])
+      None -> element_none()
+    },
+    log_rows(logs),
+    case logs.next_before {
+      Some(_) -> html.p([attribute.class("muted")], [text("older entries available")])
+      None -> element_none()
+    },
+  ])
+}
+
+fn kind_chips(filters: model.LogFilters) -> List(Element(model.Msg)) {
+  list.map(model.log_kinds, fn(kind) {
+    html.button(
+      [
+        attribute.attribute("type", "button"),
+        attribute.class(chip_class(list.contains(filters.kinds, kind))),
+        event.on_click(model.KindToggled(kind)),
+      ],
+      [text(kind)],
+    )
+  })
+}
+
+fn chip_class(active: Bool) -> String {
+  case active {
+    True -> "chip active"
+    False -> "chip"
+  }
+}
+
+fn log_rows(logs: model.Logs) -> Element(model.Msg) {
+  case logs.entries {
+    [] -> html.p([attribute.class("muted")], [text("no entries match")])
+    entries ->
+      html.div([attribute.class("log-rows")], list.map(entries, fn(entry) {
+        log_row(logs, entry)
+      }))
+  }
+}
+
+fn log_row(logs: model.Logs, entry: model.LogEntry) -> Element(model.Msg) {
+  html.details([attribute.class("log-row")], [
+    html.summary([attribute.class("log-head")], [
+      html.span([attribute.class("log-at")], [text(model.short_time(entry.at))]),
+      html.span([attribute.class("log-kind " <> kind_class(entry.kind))], [text(entry.kind)]),
+      case entry.thread {
+        Some(name) -> html.span([attribute.class("log-thread")], [text("@" <> name)])
+        None -> element_none()
+      },
+      html.span([attribute.class("log-text")], [text(entry.text)]),
+    ]),
+    html.pre([attribute.class("log-raw")], [text(entry.raw)]),
+    spill_block(logs, entry),
+  ])
+}
+
+/// A row whose record spilled its full output: the expander fetches
+/// `/api/spill?path=…` once, then shows what came back (or why it did not).
+fn spill_block(logs: model.Logs, entry: model.LogEntry) -> Element(model.Msg) {
+  case entry.spill {
+    None -> element_none()
+    Some(path) ->
+      html.details([attribute.class("log-spill")], [
+        html.summary(
+          [
+            attribute.class("spill-head"),
+            event.on_click(model.SpillRequested(entry.id, path)),
+          ],
+          [text("full output · " <> path)],
+        ),
+        html.pre([attribute.class("spill-body")], [text(spill_text(logs, entry.id))]),
+      ])
+  }
+}
+
+fn spill_text(logs: model.Logs, id: Int) -> String {
+  case list.key_find(logs.spills, id) {
+    Ok(text) -> text
+    Error(_) -> "press to load"
+  }
+}
+
+fn kind_class(kind: String) -> String {
+  case kind {
+    "pi.user" -> "kind-user"
+    "pi.assistant" -> "kind-assistant"
+    "pi.tool-result" -> "kind-tool"
+    "pi.compaction" -> "kind-compaction"
+    "pi.system" -> "kind-system"
+    _ -> "kind-app"
+  }
+}
+
+fn or_default_logs(logs: Option(model.Logs)) -> model.Logs {
+  case logs {
+    Some(logs) -> logs
+    None -> model.empty_logs()
   }
 }

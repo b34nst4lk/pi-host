@@ -2,10 +2,12 @@ import * as $json from "../../gleam_json/gleam/json.mjs";
 import * as $decode from "../../gleam_stdlib/gleam/dynamic/decode.mjs";
 import * as $int from "../../gleam_stdlib/gleam/int.mjs";
 import * as $option from "../../gleam_stdlib/gleam/option.mjs";
-import { Option$None$const } from "../../gleam_stdlib/gleam/option.mjs";
+import { Some, Option$None$const } from "../../gleam_stdlib/gleam/option.mjs";
 import * as $result from "../../gleam_stdlib/gleam/result.mjs";
 import * as $string from "../../gleam_stdlib/gleam/string.mjs";
 import {
+  Ok,
+  Error,
   List$Empty$const as $List$Empty$const,
   prepend as listPrepend,
   CustomType as $CustomType,
@@ -29,6 +31,27 @@ export const State$State$queue = (value) => value.queue;
 export const State$State$1 = (value) => value.queue;
 export const State$State$agents = (value) => value.agents;
 export const State$State$2 = (value) => value.agents;
+
+export class LogsPage extends $CustomType {
+  constructor(ok, error, entries, next_before) {
+    super();
+    this.ok = ok;
+    this.error = error;
+    this.entries = entries;
+    this.next_before = next_before;
+  }
+}
+export const LogsPage$LogsPage = (ok, error, entries, next_before) =>
+  new LogsPage(ok, error, entries, next_before);
+export const LogsPage$isLogsPage = (value) => value instanceof LogsPage;
+export const LogsPage$LogsPage$ok = (value) => value.ok;
+export const LogsPage$LogsPage$0 = (value) => value.ok;
+export const LogsPage$LogsPage$error = (value) => value.error;
+export const LogsPage$LogsPage$1 = (value) => value.error;
+export const LogsPage$LogsPage$entries = (value) => value.entries;
+export const LogsPage$LogsPage$2 = (value) => value.entries;
+export const LogsPage$LogsPage$next_before = (value) => value.next_before;
+export const LogsPage$LogsPage$3 = (value) => value.next_before;
 
 /**
  * One line, no stack: the model renders this in the error banner.
@@ -561,4 +584,164 @@ function spend_decoder() {
 export function spend(body) {
   let _pipe = $json.parse(body, spend_decoder());
   return $result.map_error(_pipe, bad_shape);
+}
+
+function optional_string(name, next) {
+  return $decode.optional_field(
+    name,
+    Option$None$const,
+    $decode.optional($decode.string),
+    next,
+  );
+}
+
+/**
+ * A row with a missing or misshapen field still renders: the human line is the
+ * reader's job, and the raw record is shown verbatim beside it.
+ * 
+ * @ignore
+ */
+function log_entry_decoder() {
+  return field_or(
+    "id",
+    0,
+    $decode.int,
+    (id) => {
+      return field_or(
+        "kind",
+        "unknown",
+        $decode.string,
+        (kind) => {
+          return optional_string(
+            "at",
+            (at) => {
+              return field_or(
+                "text",
+                "unknown entry",
+                $decode.string,
+                (text) => {
+                  return optional_string(
+                    "thread",
+                    (thread) => {
+                      return optional_string(
+                        "spill",
+                        (spill) => {
+                          return field_or(
+                            "raw",
+                            "",
+                            $decode.string,
+                            (raw) => {
+                              return $decode.success(
+                                new $model.LogEntry(
+                                  id,
+                                  kind,
+                                  at,
+                                  text,
+                                  thread,
+                                  spill,
+                                  raw,
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      );
+                    },
+                  );
+                },
+              );
+            },
+          );
+        },
+      );
+    },
+  );
+}
+
+function logs_decoder() {
+  return field_or(
+    "ok",
+    true,
+    $decode.bool,
+    (ok) => {
+      return $decode.optional_field(
+        "error",
+        Option$None$const,
+        $decode.optional($decode.string),
+        (problem) => {
+          return $decode.optional_field(
+            "entries",
+            $List$Empty$const,
+            $decode.list(log_entry_decoder()),
+            (entries) => {
+              return $decode.optional_field(
+                "next_before",
+                Option$None$const,
+                $decode.optional($decode.int),
+                (next_before) => {
+                  return $decode.success(
+                    new LogsPage(ok, problem, entries, next_before),
+                  );
+                },
+              );
+            },
+          );
+        },
+      );
+    },
+  );
+}
+
+export function logs(body) {
+  let _pipe = $json.parse(body, logs_decoder());
+  return $result.map_error(_pipe, bad_shape);
+}
+
+function spill_decoder() {
+  return field_or(
+    "ok",
+    false,
+    $decode.bool,
+    (ok) => {
+      return $decode.optional_field(
+        "error",
+        Option$None$const,
+        $decode.optional($decode.string),
+        (problem) => {
+          return $decode.optional_field(
+            "text",
+            Option$None$const,
+            $decode.optional($decode.string),
+            (text) => { return $decode.success([ok, problem, text]); },
+          );
+        },
+      );
+    },
+  );
+}
+
+/**
+ * One `/api/spill` answer: `Ok` is the text to show, `Error` the reason to show
+ * in its place. The reader answers 200 with `ok:false` for a ledger it cannot
+ * read; a real HTTP failure reaches the FFI's error callback instead.
+ */
+export function spill(body) {
+  let $ = $json.parse(body, spill_decoder());
+  if ($ instanceof Ok) {
+    if ($[0][0]) {
+      let $1 = $[0][2];
+      if ($1 instanceof Some) {
+        let text = $1[0];
+        return new Ok(text);
+      } else {
+        return new Ok("");
+      }
+    } else {
+      let problem = $[0][1];
+      return new Error(option_or(problem, "no such file"));
+    }
+  } else {
+    let problem = $[0];
+    return new Error(bad_shape(problem));
+  }
 }

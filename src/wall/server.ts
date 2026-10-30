@@ -1,4 +1,4 @@
-// The wall's HTTP surface: three JSON endpoints and the built UI, on one port.
+// The wall's HTTP surface: five JSON endpoints and the built UI, on one port.
 //
 // Rules the rest of the system relies on (wall/CONTRACT.md):
 //  * `/api/*` is always JSON, even on failure — `{"v":1,"ok":false,"error":"…"}`;
@@ -10,14 +10,25 @@
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
-import { type HealthReport, type StateReport, VERSION, failure, isoNow } from "./contract.ts";
+import {
+	type HealthReport,
+	type LogsReport,
+	type SpillReport,
+	type StateReport,
+	VERSION,
+	failure,
+	isoNow,
+} from "./contract.ts";
 import { oneLine, type Ledger } from "./ledger.ts";
+import { DEFAULT_SPILL_ROOTS, parseLogsQuery, readSpill } from "./logs.ts";
 import type { SpendReader } from "./spend.ts";
 
 export type WallServerOptions = {
 	readonly ledger: Ledger;
 	readonly spend: SpendReader;
 	readonly assetsDir: string;
+	/** Roots `/api/spill` may serve from; defaults to `/opt/pi-host` (see logs.ts). */
+	readonly spillRoots?: readonly string[];
 	readonly now?: () => number;
 	readonly startedAt?: number;
 };
@@ -74,6 +85,54 @@ export function createHandler(options: WallServerOptions) {
 					const report = await options.spend.report();
 					// 200 even when `ok:false`: the UI renders `error` in a banner.
 					sendJson(response, 200, report, method === "HEAD");
+					return;
+				}
+				case "/api/logs": {
+					// Additive in v1: `/api/state` and `/api/spend` do not change. Junk params
+					// are clamped, never rejected — the tail must keep working while someone
+					// fiddles with the URL by hand.
+					const query = parseLogsQuery(url.searchParams);
+					const page = options.ledger.logs(query);
+					const report: LogsReport = {
+						v: VERSION,
+						ok: page.error === null,
+						error: page.error,
+						generated_at: isoNow(now()),
+						entries: page.entries,
+					};
+					if (page.next_before !== null) report.next_before = page.next_before;
+					sendJson(response, 200, report, method === "HEAD");
+					return;
+				}
+				case "/api/spill": {
+					const result = readSpill(url.searchParams.get("path"), {
+						roots: options.spillRoots ?? DEFAULT_SPILL_ROOTS,
+					});
+					const report: SpillReport = result.ok
+						? {
+								v: VERSION,
+								ok: true,
+								error: null,
+								generated_at: isoNow(now()),
+								path: result.path,
+								bytes: result.bytes,
+								truncated: result.truncated,
+								text: result.text,
+							}
+						: {
+								v: VERSION,
+								ok: false,
+								error: result.error,
+								generated_at: isoNow(now()),
+								path: null,
+								bytes: null,
+								truncated: false,
+								text: null,
+							};
+					// A rejected path is a client mistake (400), a missing file a 404 — both
+					// JSON with `ok:false`, because `/api/*` is never HTML.
+					const status = result.ok ? 200 : result.error === "no such file" ? 404 : 400;
+					sendJson(response, status, report, method === "HEAD");
 					return;
 				}
 				default: {

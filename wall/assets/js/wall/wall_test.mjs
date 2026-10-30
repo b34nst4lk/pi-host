@@ -5,6 +5,7 @@ import { Some, Option$None$const } from "../gleam_stdlib/gleam/option.mjs";
 import * as $string from "../gleam_stdlib/gleam/string.mjs";
 import * as $gleeunit from "../gleeunit/gleeunit.mjs";
 import * as $should from "../gleeunit/gleeunit/should.mjs";
+import * as $element from "../lustre/lustre/element.mjs";
 import {
   Ok,
   Error,
@@ -15,6 +16,7 @@ import {
 import * as $decode from "./wall/decode.mjs";
 import * as $fake from "./wall/fake.mjs";
 import * as $model from "./wall/model.mjs";
+import * as $view from "./wall/view.mjs";
 
 const FILEPATH = "test/wall_test.gleam";
 
@@ -191,15 +193,15 @@ export function decodes_a_reader_state_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      117,
+      119,
       "decodes_a_reader_state_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: result,
-        start: 3788,
-        end: 3817,
-        pattern_start: 3799,
-        pattern_end: 3808
+        start: 3827,
+        end: 3856,
+        pattern_start: 3838,
+        pattern_end: 3847
       }
     )
   }
@@ -249,15 +251,15 @@ export function decodes_a_reader_spend_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      140,
+      142,
       "decodes_a_reader_spend_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 4662,
-        end: 4717,
-        pattern_start: 4673,
-        pattern_end: 4682
+        start: 4701,
+        end: 4756,
+        pattern_start: 4712,
+        pattern_end: 4721
       }
     )
   }
@@ -285,15 +287,15 @@ export function tolerates_missing_fields_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      150,
+      152,
       "tolerates_missing_fields_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 5014,
-        end: 5074,
-        pattern_start: 5025,
-        pattern_end: 5034
+        start: 5053,
+        end: 5113,
+        pattern_start: 5064,
+        pattern_end: 5073
       }
     )
   }
@@ -321,15 +323,15 @@ export function rejects_a_non_json_body_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      160,
+      162,
       "rejects_a_non_json_body_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 5412,
-        end: 5484,
-        pattern_start: 5423,
-        pattern_end: 5437
+        start: 5451,
+        end: 5523,
+        pattern_start: 5462,
+        pattern_end: 5476
       }
     )
   }
@@ -351,15 +353,15 @@ export function spend_without_money_is_unknown_not_zero_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      166,
+      168,
       "spend_without_money_is_unknown_not_zero_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 5698,
-        end: 5785,
-        pattern_start: 5709,
-        pattern_end: 5718
+        start: 5737,
+        end: 5824,
+        pattern_start: 5748,
+        pattern_end: 5757
       }
     )
   }
@@ -446,15 +448,15 @@ export function decodes_all_seven_agent_states_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      226,
+      228,
       "decodes_all_seven_agent_states_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 7890,
-        end: 7931,
-        pattern_start: 7901,
-        pattern_end: 7910
+        start: 7929,
+        end: 7970,
+        pattern_start: 7940,
+        pattern_end: 7949
       }
     )
   }
@@ -498,15 +500,15 @@ export function agent_without_state_is_unknown_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      243,
+      245,
       "agent_without_state_is_unknown_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 8299,
-        end: 8401,
-        pattern_start: 8310,
-        pattern_end: 8319
+        start: 8338,
+        end: 8440,
+        pattern_start: 8349,
+        pattern_end: 8358
       }
     )
   }
@@ -580,15 +582,15 @@ export function last_reply_renders_as_entry_or_dash_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      280,
+      282,
       "last_reply_renders_as_entry_or_dash_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 9462,
-        end: 9517,
-        pattern_start: 9473,
-        pattern_end: 9482
+        start: 9501,
+        end: 9556,
+        pattern_start: 9512,
+        pattern_end: 9521
       }
     )
   }
@@ -612,4 +614,737 @@ export function last_reply_renders_as_entry_or_dash_test() {
       listPrepend("2409", listPrepend("2181", $List$Empty$const)),
     ),
   );
+}
+
+export function empty_filters_send_no_kind_test() {
+  let _pipe = $model.logs_path($model.empty_filters(), Option$None$const, 50);
+  return $should.equal(_pipe, "/api/logs?limit=50&dir=desc");
+}
+
+export function direction_narrows_the_kinds_test() {
+  let _pipe = $model.effective_kinds($model.empty_filters());
+  $should.equal(_pipe, $List$Empty$const);
+  let _pipe$1 = $model.effective_kinds(
+    new $model.LogFilters(
+      $List$Empty$const,
+      $model.Direction$Incoming$const,
+      "",
+    ),
+  );
+  $should.equal(_pipe$1, listPrepend("pi.user", $List$Empty$const));
+  let _pipe$2 = $model.effective_kinds(
+    new $model.LogFilters(
+      $List$Empty$const,
+      $model.Direction$Outgoing$const,
+      "",
+    ),
+  );
+  return $should.equal(
+    _pipe$2,
+    listPrepend("pi.assistant", listPrepend("app.*", $List$Empty$const)),
+  );
+}
+
+export function chips_and_direction_intersect_test() {
+  let _pipe = $model.effective_kinds(
+    new $model.LogFilters(
+      listPrepend("pi.assistant", $List$Empty$const),
+      $model.Direction$Incoming$const,
+      "",
+    ),
+  );
+  $should.equal(_pipe, listPrepend("(no such kind)", $List$Empty$const));
+  let _pipe$1 = $model.effective_kinds(
+    new $model.LogFilters(
+      listPrepend("pi.user", listPrepend("pi.assistant", $List$Empty$const)),
+      $model.Direction$Outgoing$const,
+      "",
+    ),
+  );
+  $should.equal(_pipe$1, listPrepend("pi.assistant", $List$Empty$const));
+  let _pipe$2 = $model.effective_kinds(
+    new $model.LogFilters(
+      listPrepend("pi.compaction", $List$Empty$const),
+      $model.Direction$BothWays$const,
+      "",
+    ),
+  );
+  return $should.equal(_pipe$2, listPrepend("pi.compaction", $List$Empty$const));
+}
+
+export function app_star_matches_the_family_test() {
+  let _pipe = $model.effective_kinds(
+    new $model.LogFilters(
+      listPrepend("app.*", listPrepend("pi.user", $List$Empty$const)),
+      $model.Direction$Outgoing$const,
+      "",
+    ),
+  );
+  return $should.equal(_pipe, listPrepend("app.*", $List$Empty$const));
+}
+
+export function logs_path_carries_the_cursor_and_the_search_test() {
+  let filters = new $model.LogFilters(
+    listPrepend("pi.user", listPrepend("app.*", $List$Empty$const)),
+    $model.Direction$BothWays$const,
+    "a b&c",
+  );
+  let _pipe = $model.logs_path(filters, new Some(3509), 200);
+  $should.equal(
+    _pipe,
+    "/api/logs?limit=200&dir=desc&kind=pi.user,app.*&before=3509&q=a%20b%26c",
+  );
+  let _pipe$1 = $model.logs_path(
+    new $model.LogFilters(filters.kinds, filters.direction, "   "),
+    Option$None$const,
+    50,
+  );
+  return $should.equal(
+    _pipe$1,
+    "/api/logs?limit=50&dir=desc&kind=pi.user,app.*",
+  );
+}
+
+export function url_encode_escapes_the_query_metacharacters_test() {
+  let _pipe = $model.url_encode("%_&?#+=");
+  $should.equal(_pipe, "%25_%26%3F%23%2B%3D");
+  let _pipe$1 = $model.url_encode("plain");
+  return $should.equal(_pipe$1, "plain");
+}
+
+export function short_time_takes_the_clock_out_of_an_iso_stamp_test() {
+  let _pipe = $model.short_time(new Some("2026-10-29T14:30:58.000Z"));
+  $should.equal(_pipe, "14:30:58");
+  let _pipe$1 = $model.short_time(new Some("bogus"));
+  $should.equal(_pipe$1, "bogus");
+  let _pipe$2 = $model.short_time(Option$None$const);
+  return $should.equal(_pipe$2, "—");
+}
+
+export function logs_line_counts_and_names_the_mode_test() {
+  let _pipe = $model.logs_line($model.empty_logs());
+  $should.equal(_pipe, "0 entries · live tail");
+  let _block;
+  let _record = $model.empty_logs();
+  _block = new $model.Logs(
+    listPrepend(
+      new $model.LogEntry(
+        1,
+        "pi.user",
+        Option$None$const,
+        "hi",
+        Option$None$const,
+        Option$None$const,
+        "{}",
+      ),
+      $List$Empty$const,
+    ),
+    _record.next_before,
+    _record.tailing,
+    _record.appending,
+    _record.spills,
+    _record.error,
+  );
+  let one = _block;
+  let _pipe$1 = $model.logs_line(one);
+  $should.equal(_pipe$1, "1 entry · live tail");
+  let _pipe$2 = $model.logs_line(
+    new $model.Logs(
+      one.entries,
+      one.next_before,
+      false,
+      one.appending,
+      one.spills,
+      one.error,
+    ),
+  );
+  return $should.equal(_pipe$2, "1 entry · paged back");
+}
+
+export function decodes_a_logs_page_test() {
+  let $ = $decode.logs($fake.logs_json($model.empty_filters(), 0));
+  let page;
+  if ($ instanceof Ok) {
+    page = $[0];
+  } else {
+    throw makeError(
+      "let_assert",
+      FILEPATH,
+      "wall_test",
+      399,
+      "decodes_a_logs_page_test",
+      "Pattern match failed, no pattern matched the value.",
+      {
+        value: $,
+        start: 13332,
+        end: 13407,
+        pattern_start: 13343,
+        pattern_end: 13351
+      }
+    )
+  }
+  let _pipe = page.ok;
+  $should.equal(_pipe, true);
+  let _pipe$1 = page.next_before;
+  $should.equal(_pipe$1, new Some(3604));
+  let _pipe$2 = $list.length(page.entries);
+  $should.equal(_pipe$2, 6);
+  let $1 = $list.first(page.entries);
+  let newest;
+  if ($1 instanceof Ok) {
+    newest = $1[0];
+  } else {
+    throw makeError(
+      "let_assert",
+      FILEPATH,
+      "wall_test",
+      403,
+      "decodes_a_logs_page_test",
+      "Pattern match failed, no pattern matched the value.",
+      {
+        value: $1,
+        start: 13536,
+        end: 13584,
+        pattern_start: 13547,
+        pattern_end: 13557
+      }
+    )
+  }
+  let _pipe$3 = newest.kind;
+  $should.equal(_pipe$3, "pi.assistant");
+  let _pipe$4 = newest.at;
+  $should.equal(_pipe$4, new Some("2026-10-29T14:30:10.000Z"));
+  let _pipe$5 = newest.thread;
+  $should.equal(_pipe$5, Option$None$const);
+  let _pipe$6 = newest.spill;
+  $should.equal(_pipe$6, Option$None$const);
+  let _pipe$7 = newest.raw;
+  $should.equal(_pipe$7, "{\"kind\":\"pi.assistant\",\"id\":3610}");
+  let _block;
+  let _pipe$8 = page.entries;
+  let _pipe$9 = $list.drop(_pipe$8, 1);
+  _block = $list.first(_pipe$9);
+  let $2 = _block;
+  let spilled;
+  if ($2 instanceof Ok) {
+    spilled = $2[0];
+  } else {
+    throw makeError(
+      "let_assert",
+      FILEPATH,
+      "wall_test",
+      410,
+      "decodes_a_logs_page_test",
+      "Pattern match failed, no pattern matched the value.",
+      {
+        value: $2,
+        start: 13926,
+        end: 13993,
+        pattern_start: 13937,
+        pattern_end: 13948
+      }
+    )
+  }
+  let _pipe$10 = spilled.spill;
+  $should.equal(_pipe$10, new Some("/opt/pi-host/storage/spill/full.log"));
+  let _block$1;
+  let _pipe$11 = page.entries;
+  let _pipe$12 = $list.drop(_pipe$11, 5);
+  _block$1 = $list.first(_pipe$12);
+  let $3 = _block$1;
+  let app;
+  if ($3 instanceof Ok) {
+    app = $3[0];
+  } else {
+    throw makeError(
+      "let_assert",
+      FILEPATH,
+      "wall_test",
+      412,
+      "decodes_a_logs_page_test",
+      "Pattern match failed, no pattern matched the value.",
+      {
+        value: $3,
+        start: 14073,
+        end: 14136,
+        pattern_start: 14084,
+        pattern_end: 14091
+      }
+    )
+  }
+  let _pipe$13 = app.kind;
+  $should.equal(_pipe$13, "app.subagents");
+  let _pipe$14 = app.thread;
+  return $should.equal(_pipe$14, new Some("wall-ui"));
+}
+
+export function fake_fixtures_honour_the_filters_test() {
+  let $ = $decode.logs(
+    $fake.logs_json(
+      new $model.LogFilters(
+        $List$Empty$const,
+        $model.Direction$Incoming$const,
+        "",
+      ),
+      0,
+    ),
+  );
+  let page;
+  if ($ instanceof Ok) {
+    page = $[0];
+  } else {
+    throw makeError(
+      "let_assert",
+      FILEPATH,
+      "wall_test",
+      418,
+      "fake_fixtures_honour_the_filters_test",
+      "Pattern match failed, no pattern matched the value.",
+      {
+        value: $,
+        start: 14281,
+        end: 14423,
+        pattern_start: 14292,
+        pattern_end: 14300
+      }
+    )
+  }
+  let _pipe = page.entries;
+  let _pipe$1 = $list.map(_pipe, (entry) => { return entry.kind; });
+  $should.equal(_pipe$1, listPrepend("pi.user", $List$Empty$const));
+  let $1 = $decode.logs(
+    $fake.logs_json(
+      new $model.LogFilters(
+        $List$Empty$const,
+        $model.Direction$BothWays$const,
+        "COMPACT",
+      ),
+      0,
+    ),
+  );
+  let searched;
+  if ($1 instanceof Ok) {
+    searched = $1[0];
+  } else {
+    throw makeError(
+      "let_assert",
+      FILEPATH,
+      "wall_test",
+      425,
+      "fake_fixtures_honour_the_filters_test",
+      "Pattern match failed, no pattern matched the value.",
+      {
+        value: $1,
+        start: 14509,
+        end: 14662,
+        pattern_start: 14520,
+        pattern_end: 14532
+      }
+    )
+  }
+  let _pipe$2 = searched.entries;
+  let _pipe$3 = $list.map(_pipe$2, (entry) => { return entry.kind; });
+  $should.equal(_pipe$3, listPrepend("pi.compaction", $List$Empty$const));
+  let $2 = $decode.logs(
+    $fake.logs_json(
+      new $model.LogFilters(
+        listPrepend("pi.assistant", $List$Empty$const),
+        $model.Direction$Incoming$const,
+        "",
+      ),
+      0,
+    ),
+  );
+  let nothing;
+  if ($2 instanceof Ok) {
+    nothing = $2[0];
+  } else {
+    throw makeError(
+      "let_assert",
+      FILEPATH,
+      "wall_test",
+      432,
+      "fake_fixtures_honour_the_filters_test",
+      "Pattern match failed, no pattern matched the value.",
+      {
+        value: $2,
+        start: 14758,
+        end: 14917,
+        pattern_start: 14769,
+        pattern_end: 14780
+      }
+    )
+  }
+  let _pipe$4 = nothing.entries;
+  $should.equal(_pipe$4, $List$Empty$const);
+  let _pipe$5 = nothing.next_before;
+  return $should.equal(_pipe$5, Option$None$const);
+}
+
+export function tolerates_a_row_with_missing_fields_test() {
+  let $ = $decode.logs("{\"v\":1,\"ok\":true,\"entries\":[{\"id\":7}]}");
+  let page;
+  if ($ instanceof Ok) {
+    page = $[0];
+  } else {
+    throw makeError(
+      "let_assert",
+      FILEPATH,
+      "wall_test",
+      442,
+      "tolerates_a_row_with_missing_fields_test",
+      "Pattern match failed, no pattern matched the value.",
+      {
+        value: $,
+        start: 15057,
+        end: 15140,
+        pattern_start: 15068,
+        pattern_end: 15076
+      }
+    )
+  }
+  let $1 = $list.first(page.entries);
+  let entry;
+  if ($1 instanceof Ok) {
+    entry = $1[0];
+  } else {
+    throw makeError(
+      "let_assert",
+      FILEPATH,
+      "wall_test",
+      443,
+      "tolerates_a_row_with_missing_fields_test",
+      "Pattern match failed, no pattern matched the value.",
+      {
+        value: $1,
+        start: 15143,
+        end: 15190,
+        pattern_start: 15154,
+        pattern_end: 15163
+      }
+    )
+  }
+  let _pipe = entry.id;
+  $should.equal(_pipe, 7);
+  let _pipe$1 = entry.kind;
+  $should.equal(_pipe$1, "unknown");
+  let _pipe$2 = entry.text;
+  $should.equal(_pipe$2, "unknown entry");
+  let _pipe$3 = entry.raw;
+  $should.equal(_pipe$3, "");
+  let _pipe$4 = page.next_before;
+  return $should.equal(_pipe$4, Option$None$const);
+}
+
+export function a_failed_read_is_a_message_not_a_crash_test() {
+  let $ = $decode.logs(
+    "{\"v\":1,\"ok\":false,\"error\":\"ledger unavailable\",\"entries\":[]}",
+  );
+  let page;
+  if ($ instanceof Ok) {
+    page = $[0];
+  } else {
+    throw makeError(
+      "let_assert",
+      FILEPATH,
+      "wall_test",
+      452,
+      "a_failed_read_is_a_message_not_a_crash_test",
+      "Pattern match failed, no pattern matched the value.",
+      {
+        value: $,
+        start: 15440,
+        end: 15556,
+        pattern_start: 15451,
+        pattern_end: 15459
+      }
+    )
+  }
+  let _pipe = page.ok;
+  $should.equal(_pipe, false);
+  let _pipe$1 = page.error;
+  $should.equal(_pipe$1, new Some("ledger unavailable"));
+  let _pipe$2 = page.entries;
+  return $should.equal(_pipe$2, $List$Empty$const);
+}
+
+export function rejects_a_non_json_logs_body_test() {
+  let $ = $decode.logs("<html>502</html>");
+  let problem;
+  if ($ instanceof Error) {
+    problem = $[0];
+  } else {
+    throw makeError(
+      "let_assert",
+      FILEPATH,
+      "wall_test",
+      461,
+      "rejects_a_non_json_logs_body_test",
+      "Pattern match failed, no pattern matched the value.",
+      {
+        value: $,
+        start: 15732,
+        end: 15791,
+        pattern_start: 15743,
+        pattern_end: 15757
+      }
+    )
+  }
+  let _pipe = problem;
+  let _pipe$1 = $string.starts_with(
+    _pipe,
+    "unexpected response shape: UnexpectedByte",
+  );
+  return $should.be_true(_pipe$1);
+}
+
+export function decodes_a_spill_test() {
+  let _pipe = $decode.spill($fake.spill_json());
+  $should.equal(_pipe, new Ok("line one\nline two\n"));
+  let _pipe$1 = $decode.spill(
+    "{\"ok\":false,\"error\":\"path outside the allowlist\"}",
+  );
+  $should.equal(_pipe$1, new Error("path outside the allowlist"));
+  let _pipe$2 = $decode.spill("{\"ok\":false}");
+  $should.equal(_pipe$2, new Error("no such file"));
+  let $ = $decode.spill("<html>");
+  let problem;
+  if ($ instanceof Error) {
+    problem = $[0];
+  } else {
+    throw makeError(
+      "let_assert",
+      FILEPATH,
+      "wall_test",
+      470,
+      "decodes_a_spill_test",
+      "Pattern match failed, no pattern matched the value.",
+      {
+        value: $,
+        start: 16205,
+        end: 16255,
+        pattern_start: 16216,
+        pattern_end: 16230
+      }
+    )
+  }
+  let _pipe$3 = problem;
+  let _pipe$4 = $string.starts_with(_pipe$3, "unexpected response shape: ");
+  return $should.be_true(_pipe$4);
+}
+
+function sample_logs() {
+  return new $model.Logs(
+    listPrepend(
+      new $model.LogEntry(
+        12,
+        "pi.assistant",
+        new Some("2026-10-29T14:30:58.000Z"),
+        "answered: the wall is up",
+        new Some("wall-ui"),
+        Option$None$const,
+        "{\"kind\":\"pi.assistant\"}",
+      ),
+      listPrepend(
+        new $model.LogEntry(
+          11,
+          "pi.tool-result",
+          Option$None$const,
+          "bash: full output (18 bytes)",
+          Option$None$const,
+          new Some("/opt/pi-host/storage/spill/full.log"),
+          "{}",
+        ),
+        $List$Empty$const,
+      ),
+    ),
+    new Some(10),
+    true,
+    false,
+    listPrepend([11, "line one\nline two\n"], $List$Empty$const),
+    Option$None$const,
+  );
+}
+
+function logs_model() {
+  let _record = $model.initial($model.Mode$LiveMode$const);
+  return new $model.Model(
+    _record.mode,
+    _record.vitals,
+    _record.spend,
+    _record.agents,
+    _record.queue,
+    _record.samples,
+    _record.polls,
+    _record.error,
+    $model.Tab$LogsTab$const,
+    _record.filters,
+    new Some(sample_logs()),
+  );
+}
+
+function count_of(haystack, needle) {
+  let _pipe = $string.split(haystack, needle);
+  let _pipe$1 = $list.length(_pipe);
+  return ((parts) => { return parts - 1; })(_pipe$1);
+}
+
+export function the_dashboard_is_the_tab_by_default_test() {
+  let _block;
+  let _pipe = $view.view($model.initial($model.Mode$LiveMode$const));
+  _block = $element.to_string(_pipe);
+  let html = _block;
+  let _pipe$1 = html;
+  let _pipe$2 = $string.contains(_pipe$1, "VITALS");
+  $should.be_true(_pipe$2);
+  let _pipe$3 = html;
+  let _pipe$4 = $string.contains(_pipe$3, ">LOGS<");
+  $should.be_true(_pipe$4);
+  let _pipe$5 = html;
+  let _pipe$6 = $string.contains(_pipe$5, ">DASHBOARD<");
+  $should.be_true(_pipe$6);
+  let _pipe$7 = html;
+  let _pipe$8 = count_of(_pipe$7, "log-row");
+  return $should.equal(_pipe$8, 0);
+}
+
+export function the_logs_tab_draws_every_row_test() {
+  let _block;
+  let _pipe = $view.view(logs_model());
+  _block = $element.to_string(_pipe);
+  let html = _block;
+  let _pipe$1 = html;
+  let _pipe$2 = count_of(_pipe$1, "<details");
+  $should.equal(_pipe$2, 3);
+  let _pipe$3 = html;
+  let _pipe$4 = $string.contains(_pipe$3, "VITALS");
+  $should.be_false(_pipe$4);
+  let _pipe$5 = html;
+  let _pipe$6 = $string.contains(_pipe$5, "14:30:58");
+  $should.be_true(_pipe$6);
+  let _pipe$7 = html;
+  let _pipe$8 = $string.contains(_pipe$7, "answered: the wall is up");
+  $should.be_true(_pipe$8);
+  let _pipe$9 = html;
+  let _pipe$10 = $string.contains(_pipe$9, "@wall-ui");
+  $should.be_true(_pipe$10);
+  let _pipe$11 = html;
+  let _pipe$12 = $string.contains(_pipe$11, "bash: full output (18 bytes)");
+  $should.be_true(_pipe$12);
+  let _pipe$13 = html;
+  let _pipe$14 = $string.contains(_pipe$13, "2 entries · live tail");
+  $should.be_true(_pipe$14);
+  let _pipe$15 = html;
+  let _pipe$16 = $string.contains(_pipe$15, "older entries available");
+  return $should.be_true(_pipe$16);
+}
+
+export function every_row_carries_its_raw_record_test() {
+  let _block;
+  let _pipe = $view.view(logs_model());
+  _block = $element.to_string(_pipe);
+  let html = _block;
+  let _pipe$1 = html;
+  let _pipe$2 = $string.contains(_pipe$1, "log-raw");
+  $should.be_true(_pipe$2);
+  let _pipe$3 = html;
+  let _pipe$4 = $string.contains(_pipe$3, "pi.assistant");
+  return $should.be_true(_pipe$4);
+}
+
+export function only_a_spilled_row_gets_an_expander_test() {
+  let _block;
+  let _pipe = $view.view(logs_model());
+  _block = $element.to_string(_pipe);
+  let html = _block;
+  let _pipe$1 = html;
+  let _pipe$2 = count_of(_pipe$1, "log-spill");
+  $should.equal(_pipe$2, 1);
+  let _pipe$3 = html;
+  let _pipe$4 = $string.contains(_pipe$3, "/opt/pi-host/storage/spill/full.log");
+  $should.be_true(_pipe$4);
+  let _pipe$5 = html;
+  let _pipe$6 = $string.contains(_pipe$5, "line one");
+  $should.be_true(_pipe$6);
+  let _pipe$7 = html;
+  let _pipe$8 = $string.contains(_pipe$7, "press to load");
+  return $should.be_false(_pipe$8);
+}
+
+export function the_controls_show_the_current_filters_test() {
+  let _block;
+  let _record = logs_model();
+  _block = new $model.Model(
+    _record.mode,
+    _record.vitals,
+    _record.spend,
+    _record.agents,
+    _record.queue,
+    _record.samples,
+    _record.polls,
+    _record.error,
+    _record.tab,
+    new $model.LogFilters(
+      listPrepend("pi.user", $List$Empty$const),
+      $model.Direction$Incoming$const,
+      "spill",
+    ),
+    _record.logs,
+  );
+  let model_with_filters = _block;
+  let _block$1;
+  let _pipe = $view.view(model_with_filters);
+  _block$1 = $element.to_string(_pipe);
+  let html = _block$1;
+  let _pipe$1 = html;
+  let _pipe$2 = $string.contains(_pipe$1, "type=\"search\"");
+  $should.be_true(_pipe$2);
+  let _pipe$3 = html;
+  let _pipe$4 = $string.contains(_pipe$3, "value=\"spill\"");
+  $should.be_true(_pipe$4);
+  let _pipe$5 = html;
+  let _pipe$6 = count_of(_pipe$5, "chip active");
+  return $should.equal(_pipe$6, 2);
+}
+
+export function an_empty_page_says_so_test() {
+  let _block;
+  let _pipe = $view.view(
+    (() => {
+      let _record = logs_model();
+      return new $model.Model(
+        _record.mode,
+        _record.vitals,
+        _record.spend,
+        _record.agents,
+        _record.queue,
+        _record.samples,
+        _record.polls,
+        _record.error,
+        _record.tab,
+        _record.filters,
+        new Some(
+          (() => {
+            let _record$1 = $model.empty_logs();
+            return new $model.Logs(
+              _record$1.entries,
+              _record$1.next_before,
+              _record$1.tailing,
+              _record$1.appending,
+              _record$1.spills,
+              new Some("ledger unavailable"),
+            );
+          })(),
+        ),
+      );
+    })(),
+  );
+  _block = $element.to_string(_pipe);
+  let html = _block;
+  let _pipe$1 = html;
+  let _pipe$2 = $string.contains(_pipe$1, "no entries match");
+  $should.be_true(_pipe$2);
+  let _pipe$3 = html;
+  let _pipe$4 = $string.contains(_pipe$3, "ledger unavailable");
+  return $should.be_true(_pipe$4);
 }

@@ -54,7 +54,7 @@ import { createModels } from "@earendil-works/pi-ai/models";
 import { defineDoc, Harness, InboxDoc, type Submission } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { dirname } from "node:path";
-import { mkdirSync } from "node:fs";
+import { appendFileSync, mkdirSync } from "node:fs";
 import { createAgentEnv } from "./env.ts";
 import {
 	ACK_REACTION,
@@ -77,6 +77,23 @@ import { ollamaCloudProvider } from "./provider.ts";
 
 const context = BACKGROUND_CONTEXT;
 const log = (...parts: unknown[]) => console.log("[pi-host]", ...parts);
+
+// --- transport journal ---
+// The wall's health card reads `storage/daemon.log`, and `scripts/restart-daemon.sh`
+// redirects this process's stdout into it. Transport events are written explicitly
+// anyway: stdout is lost when the daemon is started by hand, and a timestamped line
+// is the only forensic trail once a process dies. Both are kept; the journal line
+// carries its own prefix so a doubled line in the file is not a mystery.
+const journalPath = process.env.PI_HOST_LOG ?? "./storage/daemon.log";
+function journal(line: string): void {
+	try {
+		appendFileSync(journalPath, `${new Date().toISOString()} pi-host transport ${line}\n`);
+	} catch {
+		// A journal that cannot be written must never take the daemon down.
+	}
+}
+/** One line of an error, for the journal. */
+const reason = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
 // --- env + preflight (fail fast with one line per missing piece) ---
 const env = {
@@ -140,7 +157,16 @@ const subagents = createSubagents({
 	model: env.subagentModel,
 	maxTurns: Number(process.env.SUBAGENT_MAX_TURNS ?? 40),
 	git: (args, cwd, execEnv, contextArg) => envGit(args, cwd, execEnv, contextArg),
-	roomPost: (text: string) => client.sendText(env.room, text, lastInbound),
+	roomPost: async (text: string) => {
+		try {
+			return await client.sendText(env.room, text, lastInbound);
+		} catch (error) {
+			// subagents.ts reports the failure to the reporter task too; the journal is
+			// what survives when nobody is watching the room.
+			journal(`subagent room-post failed: ${reason(error)}`);
+			throw error;
+		}
+	},
 	log: (message: string) => log(`[subagent] ${message}`),
 });
 const registry = createSteerRegistry(subagents);
@@ -182,6 +208,7 @@ const root = await harness.root(context, {
 });
 harness.resume(); // interrupted inputs stay pending; queued work restarts
 log(`harness up: db=${env.db} conversation=${root.id} model=${env.ollamaModel}`);
+journal(`harness up db=${env.db} conversation=${root.id} model=${env.ollamaModel}`);
 
 // --- Matrix side ---
 let joined: string | undefined;
@@ -191,11 +218,14 @@ try {
 	// a homeserver that is merely unreachable right now must not kill the daemon;
 	// the sync loop below keeps retrying and membership is idempotent
 	log(`join attempt failed (will rely on sync retries): ${error instanceof Error ? error.message : error}`);
+	journal(`join failed: ${reason(error)} (sync keeps retrying)`);
 }
 if (joined === undefined) {
 	log(`WARN join failed for ${env.room} (id or #alias; the room must exist and invite the bot); continuing in case already member`);
+	journal(`join failed ${env.room}: not a member (continuing)`);
 } else {
 	log(`joined ${joined}`);
+	journal(`join ok ${joined}`);
 }
 
 /**
@@ -345,7 +375,11 @@ const pump = createReplyPump({
 			(await tx.doc(SteerCursor, root.id)).ids = [...ids].slice(-CURSOR_CAP);
 		}, context);
 	},
-	log: (message) => log(message),
+	log: (message) => {
+		log(message);
+		// The reply pump only logs undelivered answers: a transport failure, kept.
+		journal(message);
+	},
 });
 const watch = await root.watch(context);
 watch.start(async (value) => {
@@ -391,11 +425,18 @@ try {
 			const cause = (error as { cause?: unknown }).cause;
 			const causeText = cause instanceof Error ? (cause as Error & { code?: string }).code ?? cause.message : undefined;
 			log(`sync error: ${error instanceof Error ? error.message : error} (${causeText ?? "no cause"}); retrying in 5s`);
+			// A watchdog abort is a sync error too, but a different animal: the edge
+			// accepted the long-poll and then dropped it (the 2026-10-28 freeze). Name it.
+			const aborted =
+				error instanceof Error &&
+				(error.name === "AbortError" || error.name === "TimeoutError" || /abort|timed? ?out/i.test(error.message));
+			journal(`${aborted ? "watchdog abort" : "sync error"}: ${reason(error)} (cause: ${causeText ?? "no cause"})`);
 			await new Promise((resolve) => setTimeout(resolve, 5000));
 		}
 	}
 } finally {
 	await harness.close(context);
+	journal("harness down: closed");
 	log("harness closed; bye");
 }
 export {};
