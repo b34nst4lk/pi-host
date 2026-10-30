@@ -18,5 +18,15 @@ describe("ollamaCloudProvider", () => {
 		expect(() => ollamaCloudProvider({ ...full, model: "" })).toThrow(/missing or empty option\(s\): model/);
 		expect(() => ollamaCloudProvider({ ...full, apiKey: "" })).toThrow(/apiKey/);
 		expect(() => ollamaCloudProvider({ ...full, baseUrl: undefined as unknown as string })).toThrow(/baseUrl/);
+		expect(() => ollamaCloudProvider({ ...full, extraModels: ["  "] })).toThrow(/extraModels/);
+	});
+
+	it("registers extra models too, so a subagent model is never `no_model`", () => {
+		const models = createModels();
+		models.setProvider(ollamaCloudProvider({ ...full, extraModels: ["glm-5.3-flash", "deepseek-v4.1-flash"] }));
+		const getModel = (p: string, m: string): unknown =>
+			(models as unknown as { getModel: (p: string, m: string) => unknown }).getModel(p, m);
+		expect(getModel("ollama-cloud", "deepseek-v4.1-flash")).not.toBeUndefined();
+		expect(getModel("ollama-cloud", "glm-5.3-flash")).not.toBeUndefined();
 	});
 });

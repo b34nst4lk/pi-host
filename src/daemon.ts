@@ -89,6 +89,9 @@ const env = {
 		.filter(Boolean),
 	ollamaApiKey: process.env.OLLAMA_API_KEY ?? "",
 	ollamaModel: process.env.OLLAMA_MODEL ?? "deepseek-v4.1-flash",
+	// The subagent model is separate from the main one and must also be registered
+	// on the provider (see `extraModels`), or spawns fail `no_model`.
+	subagentModel: process.env.SUBAGENT_MODEL ?? "glm-5.3-flash",
 	ollamaBaseUrl: process.env.OLLAMA_BASE_URL ?? "https://ollama.com/v1",
 	ollamaEmbedBaseUrl: process.env.OLLAMA_EMBED_BASE_URL ?? "http://127.0.0.1:11434",
 	ollamaEmbedModel: process.env.OLLAMA_EMBED_MODEL ?? "",
@@ -118,6 +121,9 @@ models.setProvider(
 	ollamaCloudProvider({
 		apiKey: env.ollamaApiKey,
 		model: env.ollamaModel,
+		// The subagent model must be in the registry too, or every spawn fails
+		// `no_model` even though the account serves the model.
+		extraModels: [env.subagentModel],
 		baseUrl: env.ollamaBaseUrl,
 		contextWindow: env.contextWindow,
 		maxTokens: env.maxTokens,
@@ -131,7 +137,7 @@ let lastInbound: EventId | null = null;
 /** The subagent runtime: named persistent children in their own worktrees. */
 const subagents = createSubagents({
 	provider: "ollama-cloud",
-	model: process.env.SUBAGENT_MODEL ?? "glm-5.3-flash",
+	model: env.subagentModel,
 	maxTurns: Number(process.env.SUBAGENT_MAX_TURNS ?? 40),
 	git: (args, cwd, execEnv, contextArg) => envGit(args, cwd, execEnv, contextArg),
 	roomPost: (text: string) => client.sendText(env.room, text, lastInbound),

@@ -4,3 +4,5 @@ dist/
 *.log
 .env
 workspace/
+# Gleam compiler output; the deployed bundle in wall/assets IS committed.
+wall/build/

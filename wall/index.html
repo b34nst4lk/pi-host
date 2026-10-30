@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>THE WALL</title>
+    <style>
+      :root {
+        --bg: #0b0d10;
+        --panel: #14181d;
+        --line: #232a32;
+        --ink: #e6edf3;
+        --dim: #7d8b99;
+        --live: #3fb950;
+        --slow: #d29922;
+        --stale: #f85149;
+        --accent: #58a6ff;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      .wall { max-width: 1100px; margin: 0 auto; padding: 24px 20px 48px; }
+      .head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 18px; }
+      .title { font-size: 18px; letter-spacing: 0.22em; margin: 0; font-weight: 600; }
+      .mode { color: var(--dim); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; }
+      .banner {
+        border: 1px solid var(--stale);
+        color: var(--stale);
+        padding: 8px 10px;
+        margin-bottom: 14px;
+        border-radius: 4px;
+        overflow-wrap: anywhere;
+      }
+      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
+      .card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 14px; }
+      .card-title {
+        font-size: 11px;
+        letter-spacing: 0.18em;
+        color: var(--dim);
+        margin: 0 0 12px;
+        font-weight: 600;
+      }
+      .stat { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; }
+      .stat-label { color: var(--dim); }
+      .stat-value { font-variant-numeric: tabular-nums; }
+      .muted { color: var(--dim); margin: 6px 0; }
+      .spark { display: block; width: 100%; height: 24px; color: var(--accent); margin: 8px 0; }
+      .budget { margin: 10px 0; }
+      .budget-head { display: flex; justify-content: space-between; }
+      .budget-track { height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; }
+      .budget-fill { height: 100%; background: var(--live); transition: width 0.4s ease; }
+      .badge {
+        display: inline-block;
+        font-size: 10px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        border: 1px solid var(--line);
+        border-radius: 3px;
+        padding: 1px 6px;
+        margin-top: 8px;
+        color: var(--dim);
+      }
+      .badge.cached { color: var(--slow); border-color: var(--slow); }
+      .badge.stale { color: var(--stale); border-color: var(--stale); }
+      .agents { display: grid; gap: 10px; }
+      .agent { border-top: 1px solid var(--line); padding-top: 8px; }
+      .agent:first-child { border-top: none; padding-top: 0; }
+      .agent-name { color: var(--accent); }
+      .agent-state, .agent-branch, .agent-worktree, .agent-reports { color: var(--dim); font-size: 11px; }
+      .agent-worktree { overflow-wrap: anywhere; }
+      .last-error { color: var(--stale); font-size: 11px; overflow-wrap: anywhere; margin: 10px 0 0; }
+      .errors { margin: 10px 0 0; padding-left: 16px; color: var(--dim); font-size: 11px; }
+      .hidden { display: none; }
+      .foot { margin-top: 20px; color: var(--dim); font-size: 11px; }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="./js/wall/wall.mjs"></script>
+  </body>
+</html>

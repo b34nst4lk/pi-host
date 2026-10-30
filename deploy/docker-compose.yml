@@ -57,6 +57,47 @@ services:
     networks:
       - home_server_home_server-network
 
+  # THE WALL: the read-only dashboard (wall/CONTRACT.md). Data plane is
+  # src/wall/*.ts — node:sqlite on the ledger, node:http for /api/*, no npm deps.
+  # Every mount below is :ro and the rootfs is read-only, so this container
+  # cannot write to the ledger, the log, the assets or its own filesystem.
+  # Bring it up only at cutover; it must never run against a ledger the daemon is
+  # mid-write on while being tested (read-only SQLite + query_only handles it, but
+  # the point is: this is a viewer, not a participant).
+  pi-wall:
+    image: node:26-slim
+    container_name: pi-wall
+    working_dir: /opt/pi-host
+    # Node 26 strips TypeScript types itself; the wall needs no tsx and no deps.
+    command: ["node", "src/wall/main.ts"]
+    user: "1000:1000"
+    restart: unless-stopped
+    read_only: true
+    environment:
+      WALL_PORT: "8091"
+      WALL_DB: /opt/pi-host/storage/session.sqlite
+      WALL_LOG: /opt/pi-host/storage/daemon.log
+      WALL_ASSETS: /opt/pi-host/wall/assets
+      OLLAMA_API_BASE: https://ollama.com
+      NODE_OPTIONS: --dns-result-order=ipv4first
+    volumes:
+      # Same tree as pi-host, read-only: source + the durable ledger + the log.
+      - /home/jacksim/hermes-users/jacksim/workspace/pi-host:/opt/pi-host:ro
+      - /dev/shm/pi-host:/run/secrets:ro
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8091/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    # No published ports: ingress reaches it on the shared network as
+    # http://pi-wall:8091 (dash.jacks.im). Uncomment only for host-local poking:
+    # ports: ["127.0.0.1:8091:8091"]
+    networks:
+      - home_server_home_server-network
+
 networks:
   home_server_home_server-network:
     external: true
