@@ -8,7 +8,7 @@ import {
   List$Empty$const as $List$Empty$const,
   prepend as listPrepend,
 } from "../gleam.mjs";
-import * as $model from "../wall/model.mjs";
+import * as $logs from "../wall/logs.mjs";
 
 /**
  * One project card: the same shape as a subagent card, plus where it lives.
@@ -273,7 +273,7 @@ export function logs_json(filters, poll) {
       ),
     ),
   );
-  let kinds = $model.effective_kinds(filters);
+  let kinds = $logs.effective_kinds(filters);
   let kept = $list.filter(
     rows,
     (row) => {
@@ -467,7 +467,7 @@ export function browser_logs_json(conversation, filters, poll) {
     _block = $List$Empty$const;
   }
   let rows = _block;
-  let kinds = $model.effective_kinds(filters);
+  let kinds = $logs.effective_kinds(filters);
   let kept = $list.filter(
     rows,
     (row) => {

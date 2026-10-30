@@ -2,8 +2,8 @@
 
 Host for a durable agent harness: TypeScript daemon (`src/`) that steers pi-durable
 conversations from Matrix, plus `wall/` — a read-only Gleam/lustre dashboard over the
-ledger. Gates: `npm run typecheck && npm test`, and `cd wall && gleam test`; artifacts in
-`wall/assets` are committed, `wall/build/` is not.
+ledger. Gates: `npm run gates` (`typecheck` + `test` + `fsize`), and `cd wall && gleam
+test`; artifacts in `wall/assets` are committed, `wall/build/` is not.
 
 ## Skills
 
@@ -21,5 +21,9 @@ Read `skills/<name>/SKILL.md` when its trigger fires. `skills/README.md` is the 
 - The ledger is read-only: `readOnly:true`, `PRAGMA query_only=1`, `busy_timeout=2000`.
   Never crash on a bad record — degrade to `null` / `"unknown"`.
 - Zero runtime npm dependencies; strict TypeScript, tabs, `.ts` import extensions.
+- Every file stays under ~5,000 tokens (≈20,000 characters). A file that wants to grow
+  past that must be split along its module boundary, not padded. `npm run fsize`
+  measures (`src/`, `tests/`, `wall/src/`, `wall/test/`, the wall's `index.html`) and
+  fails over the limit; 4,000 is the warn line.
 - Secrets live in `/dev/shm` and `/run/secrets` (`/opt/pi-host/secrets` on the host) and
   are never read, echoed or copied.

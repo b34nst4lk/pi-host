@@ -254,6 +254,12 @@ export function str(value: unknown): string | null {
 	return typeof value === "string" ? value : null;
 }
 
+/** Errors go on the wire as one line, never a stack. */
+export function oneLine(error: unknown): string {
+	const message = error instanceof Error ? error.message : String(error);
+	return message.split("\n")[0]?.slice(0, 300) ?? "unknown error";
+}
+
 /** A JSON object, not an array and not null: the shape almost every record starts as. */
 export function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);

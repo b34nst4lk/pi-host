@@ -9,7 +9,7 @@ import gleam/int
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
-import wall/model
+import wall/logs
 
 /// A plausible `/api/state` body; `poll` makes the numbers move a little, so the
 /// sparklines have something to draw.
@@ -181,7 +181,7 @@ pub fn spend_json(poll: Int) -> String {
 /// spill path and one with a thread, all newest-first. `poll` bumps the ids so
 /// the live tail visibly moves; the filters are applied here too, so the chips
 /// and the search box do something in fake mode instead of looking broken.
-pub fn logs_json(filters: model.LogFilters, poll: Int) -> String {
+pub fn logs_json(filters: logs.LogFilters, poll: Int) -> String {
   let base = 3610 + poll
   let rows = [
     #(base, "pi.assistant", "answered: the wall is up", None, None),
@@ -197,7 +197,7 @@ pub fn logs_json(filters: model.LogFilters, poll: Int) -> String {
     #(base - 4, "pi.system", "system: preamble + 12 tools", None, None),
     #(base - 5, "app.subagents", "spawn wall-ui", Some("wall-ui"), None),
   ]
-  let kinds = model.effective_kinds(filters)
+  let kinds = logs.effective_kinds(filters)
   let kept =
     list.filter(rows, fn(row) {
       kind_selected(kinds, row.1) && text_matches(filters.query, row.2)
@@ -327,7 +327,7 @@ fn space(
 /// `pi.compaction` rows so the dividers are visible in fake mode; the children
 /// carry their own small streams. Any other id gets an empty page, which is what
 /// an unknown space would show.
-pub fn browser_logs_json(conversation: Int, filters: model.LogFilters, poll: Int) -> String {
+pub fn browser_logs_json(conversation: Int, filters: logs.LogFilters, poll: Int) -> String {
   let base = 4110 + poll
   let rows = case conversation {
     1 -> [
@@ -367,7 +367,7 @@ pub fn browser_logs_json(conversation: Int, filters: model.LogFilters, poll: Int
     ]
     _ -> []
   }
-  let kinds = model.effective_kinds(filters)
+  let kinds = logs.effective_kinds(filters)
   let kept =
     list.filter(rows, fn(row) {
       kind_selected(kinds, row.1) && text_matches(filters.query, row.2)

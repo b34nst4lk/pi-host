@@ -51,10 +51,19 @@ proves the model → decode → view chain, not a parallel code path.
 
 | file | role |
 | --- | --- |
-| `src/wall.gleam` | `init`/`update`, 10 s poll, `?fake=1`, `lustre.start`; the logs tab's query effects and the browser tab's rail/search/jump effects |
-| `src/wall/model.gleam` | types, ring buffer of samples, formatters, sparkline maths, the browser's rail ordering and jump/anchor transitions |
+| `src/wall.gleam` | `init`/`update` (a flat dispatch table), the 10 s poll, `?fake=1`, `lustre.start` |
+| `src/wall/update_logs.gleam` | the LOGS tab's half of `update`: filters, page arrivals, the spill reader, and their effects |
+| `src/wall/update_browser.gleam` | the BROWSER tab's half of `update`: picker, search submit, jump to a hit, back to the tail |
+| `src/wall/model.gleam` | the contract types, `Msg`/`Model`/`initial`, the sample ring buffer, sparkline maths, the agent-state and projects views |
+| `src/wall/format.gleam` | pure formatters (counts, bytes, ages, dollars, percents) — no contract types, so anything may import it |
+| `src/wall/logs.gleam` | logs-tab types (`Tab`, `Direction`, `LogFilters`, `Logs`) and the pure helpers: filter intersection, path building, row summaries |
+| `src/wall/browser.gleam` | picker/window/search types and the pure transitions: rail ordering, selection, jump/anchor, row options |
 | `src/wall/decode.gleam` | defensive JSON → model (`None`/`"unknown"` for anything odd) |
-| `src/wall/view.gleam` | pure `Model -> Element`: four cards (VITALS, SPEND, AGENTS, QUEUE) behind a dashboard/logs/browser/projects tab bar, one row renderer shared by both log views, plus the full-width LOGS browser and the BROWSER rail/pane; no chart library |
+| `src/wall/view.gleam` | the frame: header with its tabs, error banner, tab switch, footer — pure `Model -> Element` |
+| `src/wall/dashboard.gleam` | the four cards (VITALS, SPEND, AGENTS, QUEUE) and the PROJECTS view |
+| `src/wall/logs_view.gleam` | the full-width LOGS tab and the one row renderer both log views share |
+| `src/wall/browser_view.gleam` | the BROWSER tab: search box and hits, conversation rail, the selected space's stream |
+| `src/wall/ui.gleam` | the small pieces every tab shares: section title, stat, sparkline, budget bar, `—` defaults |
 | `src/wall/fake.gleam` | fixture JSON for offline development |
 | `src/wall/pretty.gleam` | indents a record for display; never touches the wire |
 | `src/wall/ffi.gleam` + `.ffi.mjs` | the only browser API surface: fetch, timer, clock, query string |
@@ -70,7 +79,7 @@ Rules the UI keeps:
 * the LOGS tab's filters are `kind=` parameters, not client-side filtering: what is
   on screen is what the reader answered, and a filter combination that cannot match
   (say `in` + the `pi.assistant` chip) shows an empty page rather than everything;
-* one row renderer for both tabs (`view.log_rows`), parameterised by whether the
+* one row renderer for both tabs (`logs_view.log_rows`), parameterised by whether the
   stream belongs to the logs page or to a browser pane;
 * a landed search hit turns the tail off (`anchor != None`), so the poll cannot move
   the rows under a reader who is reading them;

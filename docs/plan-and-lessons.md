@@ -216,6 +216,24 @@ unit-tested.
     makes the forensic trail durable. The agent's own probe series now runs
     bounded; it found child.abort(context, {background:true}) by reading the
     SDK types after the first unblock.
+18. **A file nobody can hold in their head is a file nobody reviews.** Six
+    files had drifted past 5,000 tokens (`ledger.ts` 10,789, `subagents.ts`
+    6,860, `daemon.ts` 6,283, `wall_test.gleam` 10,099, `view.gleam` 6,812,
+    `wall.gleam` 5,433) and each one was where the hard bugs lived. The rule is
+    now mechanical, not aspirational: `scripts/fsize.mjs` estimates tokens as
+    chars/4 for every source file, warns at 4,000, fails the gate at 5,000, and
+    `npm run gates` runs it beside typecheck and the tests. Every split that
+    followed was **move-only along a real seam** — `db` / `document-replay` /
+    `vitals` / `fleet` / `conversations` around the ledger, `format` / `logs` /
+    `browser` / `dashboard` / `logs_view` / `browser_view` around the wall — so
+    no behaviour travelled with the code. Splitting by line count produces
+    modules that share a private helper; splitting by seam produces modules
+    that share nothing but a type.
+19. **A pure renderer is testable from strings; anything with an effect is
+    not.** The Gleam tests assert on `element.to_string(view(model))`, which is
+    only possible because the view reads no clock and fetches nothing. Keeping
+    the tab panels in their own modules (`dashboard`, `logs_view`,
+    `browser_view`) is what preserved that property as the wall grew tabs.
 ## 5. Provenance
 
 - Research trail: pi background/parallel options → pi-durable fit for the

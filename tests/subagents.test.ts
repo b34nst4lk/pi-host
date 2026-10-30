@@ -16,18 +16,16 @@ import { fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-work
 import { createRegistry, Harness } from "@earendil-works/pi-durable";
 import { MemoryStorage } from "@earendil-works/pi-durable/storage/memory";
 import { describe, expect, it } from "vitest";
+import type { GitRun, GitRunner } from "../src/git.ts";
 import {
 	applyTurnLimit,
-	createSubagents,
 	parseSubagentName,
 	reportBody,
 	subagentBranch,
 	subagentInstructions,
-	SubagentLimitsDoc,
-	SubagentsDoc,
-	type GitRun,
-	type GitRunner,
-} from "../src/subagents.ts";
+} from "../src/subagent-messages.ts";
+import { SubagentLimitsDoc, SubagentsDoc } from "../src/subagent-state.ts";
+import { createSubagents } from "../src/subagents.ts";
 
 const context = BACKGROUND_CONTEXT;
 

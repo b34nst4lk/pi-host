@@ -12,6 +12,8 @@ import {
   prepend as listPrepend,
   CustomType as $CustomType,
 } from "../gleam.mjs";
+import * as $browser from "../wall/browser.mjs";
+import * as $logs from "../wall/logs.mjs";
 import * as $model from "../wall/model.mjs";
 
 export class State extends $CustomType {
@@ -743,7 +745,7 @@ function log_entry_decoder() {
                             $decode.string,
                             (raw) => {
                               return $decode.success(
-                                new $model.LogEntry(
+                                new $logs.LogEntry(
                                   id,
                                   kind,
                                   at,
@@ -921,7 +923,7 @@ function conversation_decoder() {
                             $decode.optional($decode.string),
                             (last_at) => {
                               return $decode.success(
-                                new $model.Conversation(
+                                new $browser.Conversation(
                                   id,
                                   kind,
                                   title,
@@ -1013,7 +1015,7 @@ function search_hit_decoder() {
                         $decode.string,
                         (text) => {
                           return $decode.success(
-                            new $model.SearchHit(
+                            new $browser.SearchHit(
                               conversation,
                               title,
                               entry,

@@ -5,6 +5,7 @@ const assets = new URL("../assets/js/wall/", import.meta.url);
 const load = (path) => import(new URL(path, assets));
 const app = await load("wall.mjs");
 const model = await load("wall/model.mjs");
+const tabs = await load("wall/logs.mjs");
 const fake = await load("wall/fake.mjs");
 const { view } = await load("wall/view.mjs");
 // Option is the stdlib's: import it from the same tree so `Some` is unwrapped the
@@ -40,7 +41,7 @@ for (const poll of [0, 1, 2, 3, 4]) {
 const dashboard = flatten(view(state));
 // ...then the LOGS tab, driven through the same update function the browser uses:
 // choose the tab, take a page of fixtures, expand one row's full output.
-state = app.update(state, new model.TabChosen(new model.LogsTab()))[0];
+state = app.update(state, new model.TabChosen(new tabs.LogsTab()))[0];
 state = app.update(state, new model.LogsArrived(fake.logs_json(state.filters, 0)))[0];
 // Some is a box with one field; None is a constant, so there is nothing to read.
 const some = (value) => (option.Option$isSome(value) ? option.Option$Some$0(value) : undefined);
@@ -53,7 +54,7 @@ state = app.update(
 const logs = flatten(view(state));
 // ...then the BROWSER tab: the rail, two compaction dividers, a search over every
 // conversation, and a jump to a hit in a different space than the one on screen.
-state = app.update(state, new model.TabChosen(new model.BrowserTab()))[0];
+state = app.update(state, new model.TabChosen(new tabs.BrowserTab()))[0];
 state = app.update(state, new model.ConversationsArrived(fake.conversations_json()))[0];
 // Arriving conversations select main and ask for its stream.
 const selected = some(state.browser.selected);
@@ -77,7 +78,7 @@ state = app.update(
 const jumped = flatten(view(state));
 // ...and the PROJECTS tab: the same agent cards, filtered by kind — the pane must
 // name the project, the room in short form, the directory and the history size.
-state = app.update(state, new model.TabChosen(new model.ProjectsTab()))[0];
+state = app.update(state, new model.TabChosen(new tabs.ProjectsTab()))[0];
 const projects = flatten(view(state));
 const html = dashboard + logs + rail + jumped + projects;
 const text = html.replace(/<[^>]+>/g, " ");

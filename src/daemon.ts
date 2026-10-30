@@ -67,18 +67,8 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createModels } from "@earendil-works/pi-ai/models";
 import { defineDoc, Harness, InboxDoc, type ConversationId, type Submission } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
-import { dirname, resolve } from "node:path";
-import { appendFileSync, mkdirSync } from "node:fs";
 import { createAgentEnv } from "./env.ts";
-import {
-	ACK_REACTION,
-	classifySyncBatch,
-	createReplyPump,
-	roomShort,
-	submitMatrixCommand,
-	type EventId,
-	type MatrixCommand,
-} from "./core/steer.ts";
+import { ACK_REACTION, roomShort, submitMatrixCommand, type EventId } from "./core/steer.ts";
 import { createRoomRouter } from "./rooms.ts";
 import {
 	createProjects,
@@ -88,67 +78,18 @@ import {
 	type ProjectsApi,
 } from "./projects.ts";
 import { createMatrixClient } from "./surfaces/matrix-client.ts";
-import { createOllamaApi, NoEmbeddingModelError } from "./ollama_api.ts";
-import { envGit, createSubagents } from "./subagents.ts";
-import { formatBalance, formatEmbed, formatModels, formatUsage, USAGE_RANGES } from "./core/ollama-format.ts";
+import { createOllamaApi } from "./ollama_api.ts";
+import { envGit } from "./git.ts";
+import { createSubagents } from "./subagents.ts";
 import { createSteerRegistry } from "./extensions.ts";
 import { ollamaCloudProvider } from "./provider.ts";
+import { env, journal, log, preflight, reason } from "./daemon-env.ts";
+import { answerOllamaCommand } from "./ollama-commands.ts";
+import { createPumps } from "./pumps.ts";
+import { runSyncLoop, SyncStateDoc } from "./sync-loop.ts";
 
 const context = BACKGROUND_CONTEXT;
-const log = (...parts: unknown[]) => console.log("[pi-host]", ...parts);
-
-// --- transport journal ---
-// The wall's health card reads `storage/daemon.log`, and `scripts/restart-daemon.sh`
-// redirects this process's stdout into it. Transport events are written explicitly
-// anyway: stdout is lost when the daemon is started by hand, and a timestamped line
-// is the only forensic trail once a process dies. Both are kept; the journal line
-// carries its own prefix so a doubled line in the file is not a mystery.
-const journalPath = process.env.PI_HOST_LOG ?? "./storage/daemon.log";
-function journal(line: string): void {
-	try {
-		appendFileSync(journalPath, `${new Date().toISOString()} pi-host transport ${line}\n`);
-	} catch {
-		// A journal that cannot be written must never take the daemon down.
-	}
-}
-/** One line of an error, for the journal. */
-const reason = (error: unknown): string => (error instanceof Error ? error.message : String(error));
-
-// --- env + preflight (fail fast with one line per missing piece) ---
-const env = {
-	homeserver: process.env.MATRIX_HOMESERVER ?? "http://conduit:6167",
-	accessToken: process.env.MATRIX_ACCESS_TOKEN ?? "",
-	room: process.env.MATRIX_ROOM ?? "",
-	allowedUsers: (process.env.MATRIX_ALLOWED_USERS ?? "")
-		.split(",")
-		.map((user) => user.trim())
-		.filter(Boolean),
-	ollamaApiKey: process.env.OLLAMA_API_KEY ?? "",
-	ollamaModel: process.env.OLLAMA_MODEL ?? "deepseek-v4.1-flash",
-	// The subagent model is separate from the main one and must also be registered
-	// on the provider (see `extraModels`), or spawns fail `no_model`.
-	subagentModel: process.env.SUBAGENT_MODEL ?? "glm-5.3-flash",
-	ollamaBaseUrl: process.env.OLLAMA_BASE_URL ?? "https://ollama.com/v1",
-	ollamaEmbedBaseUrl: process.env.OLLAMA_EMBED_BASE_URL ?? "http://127.0.0.1:11434",
-	ollamaEmbedModel: process.env.OLLAMA_EMBED_MODEL ?? "",
-	contextWindow: Number(process.env.OLLAMA_CONTEXT_WINDOW ?? 131072),
-	maxTokens: Number(process.env.OLLAMA_MAX_TOKENS ?? 16384),
-	db: process.env.PI_HOST_DB ?? "./storage/session.sqlite",
-	sandbox: process.env.PI_HOST_SANDBOX ?? "./workspace",
-	// Where `/project new` puts a project that names no path. Sibling of the
-	// sandbox, so a project is never inside the umbrella it spawns from.
-	projectsDir: process.env.PROJECTS_DIR ?? resolve(process.env.PI_HOST_SANDBOX ?? "./workspace", "..", "projects"),
-};
-const missing: string[] = [];
-if (!env.accessToken) missing.push("MATRIX_ACCESS_TOKEN");
-if (!env.room) missing.push("MATRIX_ROOM");
-if (env.allowedUsers.length === 0) missing.push("MATRIX_ALLOWED_USERS (refusing to let anyone/everyone steer)");
-if (!env.ollamaApiKey) missing.push("OLLAMA_API_KEY");
-if (missing.length > 0) {
-	console.error(`PREFLIGHT FAIL — missing env: ${missing.join(", ")}`);
-	process.exit(2);
-}
-for (const requiredDir of [dirname(env.db), env.sandbox, env.projectsDir]) mkdirSync(requiredDir, { recursive: true });
+preflight(env);
 
 // --- durable side ---
 const models = createModels();
@@ -184,7 +125,7 @@ const replyTargetFor = (room: string): EventId | null => lastInbound.get(room) ?
 const subagents = createSubagents({
 	provider: "ollama-cloud",
 	model: env.subagentModel,
-	maxTurns: Number(process.env.SUBAGENT_MAX_TURNS ?? 40),
+	maxTurns: env.subagentMaxTurns,
 	git: (args, cwd, execEnv, contextArg) => envGit(args, cwd, execEnv, contextArg),
 	roomPost: async (text: string) => {
 		try {
@@ -225,21 +166,6 @@ const SteerCursor = defineDoc<{ ids: Array<string | number> }>({
 	initial: () => ({ ids: [] }),
 });
 const CURSOR_CAP = 200;
-
-/**
- * Durable sync state: the `/sync` since cursor plus the ids of ingested events
- * (capped). First boot (batch null) skips the room backlog; restarts resume
- * from the stored batch; a homeserver replay of already-ingested events never
- * resubmits (classifySyncBatch in core/steer.ts holds the semantics).
- */
-const SyncStateDoc = defineDoc<{ batch: string | null; seen: string[] }>({
-	kind: "app.sync-state",
-	version: 1,
-	scope: "conversation",
-	history: "latest",
-	fork: "initial",
-	initial: () => ({ batch: null, seen: [] }),
-});
 
 const db = await openNodeSqliteStorage(env.db);
 const harness = await Harness.open(
@@ -323,7 +249,7 @@ function track(conversation: ConversationId, submission: Submission): void {
 
 const pendingCount = (conversation: ConversationId): number => pending.get(conversation)?.size ?? 0;
 
-/** Send one threaded control reply into `room`. A failed send is logged, never fatal. */
+/** Send one control reply, threaded onto the message it answers. A failed send is never fatal. */
 async function reply(room: string, text: string, replyTo: EventId): Promise<void> {
 	try {
 		await client.sendText(room, text, replyTo);
@@ -332,90 +258,32 @@ async function reply(room: string, text: string, replyTo: EventId): Promise<void
 	}
 }
 
-/**
- * Answer one Ollama query command. Exactly one upstream call per command —
- * /api/usage and /api/balance are limited to 10 req/min per user across keys, so
- * these are never polled or retried in a loop. Rendering is pure
- * (core/ollama-format.ts). A local server without an embedding model is a state
- * to report plainly, not an API failure, so it answers without the ❌.
- */
-async function answerOllamaCommand(command: MatrixCommand, replyTo: EventId, room: string): Promise<void> {
-	if (command.action === "usage-invalid") {
-		await reply(room, `unknown /usage argument "${command.text}" — /usage [${USAGE_RANGES.join("|")}] [models]`, replyTo);
-		return;
-	}
-	try {
-		switch (command.action) {
-			case "usage":
-				await reply(room, formatUsage(await ollamaApi.usage(command.range, command.groupByModel)).join("\n"), replyTo);
-				return;
-			case "balance":
-				await reply(room, formatBalance(await ollamaApi.balance()), replyTo);
-				return;
-			case "models":
-				await reply(room, formatModels(await ollamaApi.tags()).join("\n"), replyTo);
-				return;
-			case "embed":
-				await reply(room, formatEmbed(await ollamaApi.embed(command.content), 1), replyTo);
-				return;
-			default:
-				return;
-		}
-	} catch (error) {
-		if (error instanceof NoEmbeddingModelError) {
-			await reply(room, error.message, replyTo);
-			return;
-		}
-		const message = error instanceof Error ? error.message : String(error);
-		log(`${command.action} failed: ${message}`);
-		await reply(room, `❌ ${message}`, replyTo);
-	}
-}
-
 // --- reply pumps: one per WATCHED conversation, one durable cursor each ---
-// createReplyPump advances its cursor only for entries it actually delivered; a
-// failed send leaves its entry outside the cursor and is retried by the next
-// watch tick or at the next boot (at-least-once; the cursor doc is the whole
-// state). Watching is per conversation, so the set is built at boot and grown by
-// every successful bind — a project's answers have one room, and one pump.
-const pumping = new Map<ConversationId, { stop(): Promise<unknown> }>();
-
 /** The live handle of one conversation: the root is already open. */
 async function conversationHandle(id: ConversationId) {
 	return id === root.id ? root : harness.conversation(id, context);
 }
 
-/** Start (once) the pump that carries `conversation`'s answers into `room`. */
-async function ensurePump(conversation: ConversationId, room: string): Promise<void> {
-	if (pumping.has(conversation)) return;
-	const handle = await conversationHandle(conversation);
-	if (handle === undefined) {
-		journal(`pump skipped: conversation ${conversation} has no handle`);
-		return;
-	}
-	const pump = createReplyPump({
-		sendText: (text, replyTo) => client.sendText(room, text, replyTo),
-		replyTarget: () => replyTargetFor(room),
-		loadCursor: async () => new Set((await harness.snapshot(SteerCursor, conversation, context))?.ids ?? []),
-		saveCursor: async (ids) => {
-			await handle.commit(async (tx) => {
-				(await tx.doc(SteerCursor, conversation)).ids = [...ids].slice(-CURSOR_CAP);
-			}, context);
-		},
-		log: (message) => {
-			log(message);
-			// The reply pump only logs undelivered answers: a transport failure, kept.
-			journal(message);
-		},
-	});
-	const watch = await handle.watch(context);
-	watch.start(async (value) => {
-		await pump(value.entries);
-	});
-	pumping.set(conversation, watch);
-	log(`reply pump: conversation ${conversation} → room ${roomShort(room)}`);
-	journal(`reply pump on conversation ${conversation} → ${room}`);
-}
+const pumps = createPumps({
+	client,
+	context,
+	rootId: root.id,
+	handle: conversationHandle,
+	loadCursor: async (conversation) => (await harness.snapshot(SteerCursor, conversation, context))?.ids ?? undefined,
+	saveCursor: async (conversation, ids) => {
+		const handle = await conversationHandle(conversation);
+		if (handle === undefined) return;
+		await handle.commit(async (tx) => {
+			(await tx.doc(SteerCursor, conversation)).ids = ids;
+		}, context);
+	},
+	replyTarget: replyTargetFor,
+	log,
+	journal,
+});
+
+/** A bound conversation starts pumping right here, and again at every boot. */
+const ensurePump = pumps.ensure;
 
 // --- projects: the registry, the commands, and the route table ---
 const projectApi: ProjectsApi = {
@@ -461,7 +329,7 @@ const router = createRoomRouter({
 	ollama: (command, replyTo, room) => {
 		// Not awaited: an upstream timeout must not stall the sync loop. The helper
 		// never throws, it replies (threaded) whatever happens.
-		void answerOllamaCommand(command, replyTo, room);
+		void answerOllamaCommand(command, { api: ollamaApi, reply: (text) => reply(room, text, replyTo), log });
 	},
 	project: {
 		create: async (name, path, room) => afterBind(await projects.create(name, path, room, projectApi)),
@@ -482,58 +350,27 @@ for (const [name, record] of Object.entries((await projectApi.projects()).projec
 }
 
 // --- sync loop ---
-let durableSync: { batch: string | null; seen: string[] } =
-	(await harness.snapshot(SyncStateDoc, root.id, context)) ?? { batch: null, seen: [] };
-let cursor = durableSync.batch ?? "";
-let iterations = 0;
-const controller = new AbortController();
-process.on("SIGINT", () => controller.abort());
-process.on("SIGTERM", () => controller.abort());
-process.on("unhandledRejection", (reason) => log(`unhandledRejection (daemon stays up): ${reason}`));
-
-log(`syncing ${env.room} (and every bound project room) on ${env.homeserver}; ctrl-c to stop`);
-try {
-	while (!controller.signal.aborted) {
-		try {
-			const batch = await client.sync(cursor, iterations === 0 ? 0 : 30_000, controller.signal);
-			iterations += 1;
-			const classification = classifySyncBatch(durableSync, seenEvents, batch.textEvents);
-			if (classification.skipBacklog) {
-				if (batch.textEvents.length > 0) {
-					log(`first boot: skipping ${batch.textEvents.length} backlog events (only messages sent after the daemon starts steer it)`);
-				}
-			} else {
-				// One router, every room: it decides from the registry which room steers
-				// what and drops the rest without a word.
-				for (const event of classification.fresh) await router.handleEvent(event);
-			}
-			// every batch event counts as seen by this process, skipped backlog included
-			for (const event of batch.textEvents) seenEvents.add(event.id);
-			// process first, persist after: a crash in between replays at most once, never skips
-			durableSync = { batch: batch.nextBatch, seen: classification.durableSeen };
+await runSyncLoop({
+	context,
+	root: {
+		id: root.id,
+		snapshot: () => harness.snapshot(SyncStateDoc, root.id, context),
+		commit: async (batch, seen) => {
 			await root.commit(async (tx) => {
 				const doc = await tx.doc(SyncStateDoc, root.id);
-				doc.batch = batch.nextBatch;
-				doc.seen = classification.durableSeen;
+				doc.batch = batch;
+				doc.seen = seen;
 			}, context);
-			cursor = batch.nextBatch;
-		} catch (error) {
-			if (controller.signal.aborted) break;
-			const cause = (error as { cause?: unknown }).cause;
-			const causeText = cause instanceof Error ? (cause as Error & { code?: string }).code ?? cause.message : undefined;
-			log(`sync error: ${error instanceof Error ? error.message : error} (${causeText ?? "no cause"}); retrying in 5s`);
-			// A watchdog abort is a sync error too, but a different animal: the edge
-			// accepted the long-poll and then dropped it (the 2026-10-28 freeze). Name it.
-			const aborted =
-				error instanceof Error &&
-				(error.name === "AbortError" || error.name === "TimeoutError" || /abort|timed? ?out/i.test(error.message));
-			journal(`${aborted ? "watchdog abort" : "sync error"}: ${reason(error)} (cause: ${causeText ?? "no cause"})`);
-			await new Promise((resolve) => setTimeout(resolve, 5000));
-		}
-	}
-} finally {
-	await harness.close(context);
-	journal("harness down: closed");
-	log("harness closed; bye");
-}
+		},
+		close: () => harness.close(context),
+	},
+	sync: (since, timeoutMs, signal) => client.sync(since, timeoutMs, signal),
+	handleEvent: (event) => router.handleEvent(event),
+	seenEvents,
+	room: env.room,
+	homeserver: env.homeserver,
+	log,
+	journal,
+	reason,
+});
 export {};

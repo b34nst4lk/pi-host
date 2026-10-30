@@ -32,7 +32,7 @@ import {
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import { isAbsolute, join, resolve } from "node:path";
 import { defineAnchorTask } from "./anchor.ts";
-import type { GitRunner } from "./subagents.ts";
+import type { GitRunner } from "./git.ts";
 
 const context = BACKGROUND_CONTEXT;
 

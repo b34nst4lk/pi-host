@@ -9,6 +9,8 @@ import gleam/json
 import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
+import wall/browser
+import wall/logs
 import wall/model
 
 /// One `/api/state` response: what the vitals, queue and agent cards show.
@@ -245,7 +247,7 @@ pub type LogsPage {
   LogsPage(
     ok: Bool,
     error: Option(String),
-    entries: List(model.LogEntry),
+    entries: List(logs.LogEntry),
     next_before: Option(Int),
   )
 }
@@ -265,7 +267,7 @@ fn logs_decoder() -> decode.Decoder(LogsPage) {
 
 /// A row with a missing or misshapen field still renders: the human line is the
 /// reader's job, and the raw record is shown verbatim beside it.
-fn log_entry_decoder() -> decode.Decoder(model.LogEntry) {
+fn log_entry_decoder() -> decode.Decoder(logs.LogEntry) {
   use id <- field_or("id", 0, decode.int)
   use kind <- field_or("kind", "unknown", decode.string)
   use at <- optional_string("at")
@@ -273,7 +275,7 @@ fn log_entry_decoder() -> decode.Decoder(model.LogEntry) {
   use thread <- optional_string("thread")
   use spill <- optional_string("spill")
   use raw <- field_or("raw", "", decode.string)
-  decode.success(model.LogEntry(
+  decode.success(logs.LogEntry(
     id: id,
     kind: kind,
     at: at,
@@ -311,7 +313,7 @@ pub type ConversationsPage {
   ConversationsPage(
     ok: Bool,
     error: Option(String),
-    items: List(model.Conversation),
+    items: List(browser.Conversation),
   )
 }
 
@@ -331,7 +333,7 @@ fn conversations_decoder() -> decode.Decoder(ConversationsPage) {
 /// says it does not know beats a card that says the wrong thing. The fields go
 /// through `tolerant`, so *any* shape drift on one space (a missing key, a string
 /// where a number belongs, a new enum word) costs that one field, not the rail.
-fn conversation_decoder() -> decode.Decoder(model.Conversation) {
+fn conversation_decoder() -> decode.Decoder(browser.Conversation) {
   use id <- tolerant("id", 0, decode.int)
   use kind <- tolerant("kind", "unknown", decode.string)
   use title <- tolerant("title", "unknown", decode.string)
@@ -339,7 +341,7 @@ fn conversation_decoder() -> decode.Decoder(model.Conversation) {
   use entries <- tolerant("entries", 0, decode.int)
   use first_at <- tolerant_optional("first_at", decode.optional(decode.string))
   use last_at <- tolerant_optional("last_at", decode.optional(decode.string))
-  decode.success(model.Conversation(
+  decode.success(browser.Conversation(
     id: id,
     kind: kind,
     title: title,
@@ -357,7 +359,7 @@ pub type SearchPage {
     error: Option(String),
     q: Option(String),
     limit: Option(Int),
-    hits: List(model.SearchHit),
+    hits: List(browser.SearchHit),
   )
 }
 
@@ -377,14 +379,14 @@ fn search_decoder() -> decode.Decoder(SearchPage) {
 
 /// A hit without a conversation id cannot be jumped to, so it decodes to `None`
 /// and the row stays visible but inert.
-fn search_hit_decoder() -> decode.Decoder(model.SearchHit) {
+fn search_hit_decoder() -> decode.Decoder(browser.SearchHit) {
   use conversation <- tolerant_optional("conversation_id", decode.optional(decode.int))
   use title <- tolerant("conversation_title", "unknown", decode.string)
   use entry <- tolerant("entry_id", 0, decode.int)
   use kind <- tolerant("kind", "unknown", decode.string)
   use at <- tolerant_optional("at", decode.optional(decode.string))
   use text <- tolerant("text", "unknown entry", decode.string)
-  decode.success(model.SearchHit(
+  decode.success(browser.SearchHit(
     conversation: conversation,
     conversation_title: title,
     entry: entry,

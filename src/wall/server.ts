@@ -11,6 +11,7 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import {
+	oneLine,
 	type ConversationsReport,
 	type HealthReport,
 	type LogsReport,
@@ -21,7 +22,7 @@ import {
 	failure,
 	isoNow,
 } from "./contract.ts";
-import { oneLine, type Ledger } from "./ledger.ts";
+import { type Ledger } from "./ledger.ts";
 import { DEFAULT_SPILL_ROOTS, parseLogsQuery, parseSearchQuery, readSpill } from "./logs.ts";
 import type { SpendReader } from "./spend.ts";
 
