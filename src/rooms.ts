@@ -23,7 +23,7 @@ import { parseMatrixCommand, pickNewEvents, roomShort, type EventId, type Matrix
 import { projectHint, type ProjectsState } from "./projects.ts";
 
 /** Ollama-answered commands: one upstream call each, never in the sync loop's path. */
-export const OLLAMA_ACTIONS = new Set(["usage", "usage-invalid", "balance", "models", "embed"]);
+const OLLAMA_ACTIONS = new Set(["usage", "usage-invalid", "balance", "models", "embed"]);
 
 /** Where one room's messages go. */
 export type RoomRoute =
@@ -202,10 +202,5 @@ export function createRoomRouter(deps: RoomRouterDeps) {
 		return deps.lastInbound.get(room) ?? null;
 	}
 
-	return { route: (room: string) => routeRoomFrom(deps, room), handleEvent, replyTarget };
-}
-
-/** `routeRoom` against the live registry, for the pump wiring. */
-async function routeRoomFrom(deps: RoomRouterDeps, room: string): Promise<RoomRoute> {
-	return routeRoom(await deps.registry(), deps.mainRooms, room);
+	return { handleEvent, replyTarget };
 }

@@ -169,20 +169,6 @@ export type TextEvent = {
 };
 
 /**
- * True when the event belongs to one of the accepted rooms. Room ids are
- * compared literally; callers pass every form they know (the configured room
- * and, when resolvable, its resolved id) so alias configuration works.
- *
- * pi-spike is a normal user in the wider setup: it may be invited into rooms
- * where other agents and people talk. Those events MUST NOT become steering
- * input — a daemon that listens to every room it idles in submits household
- * chatter to the durable agent.
- */
-export function forRoom(event: TextEvent, acceptedRooms: ReadonlySet<string>): boolean {
-	return acceptedRooms.has(event.room);
-}
-
-/**
  * Filter a batch of sync events down to ones not seen before, returning the
  * fresh events and a grown seen set. Handles the homeserver redelivering
  * events across sync batches (they must not submit twice).
@@ -356,27 +342,4 @@ export async function submitMatrixCommand(
 				`submitMatrixCommand cannot place ${command.action}; the daemon handles controls, Ollama queries and projects itself`,
 			);
 	}
-}
-
-/** Outcome counts of a /stop sweep over tracked submissions. */
-export type WithdrawResult = { aborted: number; alreadyPlaced: number; settled: number };
-
-/**
- * Withdraw every tracked submission still pending: queued ones abort
- * immediately, already-placed ones report so, settled ones report so. The
- * daemon uses this for `/stop`; aborting the live run itself, if any remains,
- * is the daemon's `root.abort` responsibility.
- */
-export async function withdrawSubmissions(
-	submissions: readonly Submission[],
-	context: Context,
-): Promise<WithdrawResult> {
-	const result: WithdrawResult = { aborted: 0, alreadyPlaced: 0, settled: 0 };
-	for (const submission of submissions) {
-		const outcome = await submission.abort(context);
-		if (outcome === "aborted") result.aborted += 1;
-		else if (outcome === "already_placed") result.alreadyPlaced += 1;
-		else result.settled += 1;
-	}
-	return result;
 }

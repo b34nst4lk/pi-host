@@ -35,6 +35,7 @@ import {
 	type ToolExecutionApi,
 } from "@earendil-works/pi-durable";
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
+import { defineAnchorTask } from "./anchor.ts";
 
 /** Extension that offers the `subagent` tool; a child subagent never selects it. */
 export const SUBAGENT_TOOLS_EXTENSION = "subagents";
@@ -56,9 +57,6 @@ const TURN_LIMIT_MARKER = "Turn limit reached.";
 
 /** Report text when a subagent finished without any prose. */
 const NO_ANSWER_TEXT = "(the subagent answered with no text)";
-
-/** How long one anchor invocation sleeps before it re-parks. */
-const ANCHOR_HOLD_MS = 60 * 60 * 1000;
 
 /** `null` when the name is not worktree-safe; otherwise the trimmed name. */
 export function parseSubagentName(raw: string): string | null {
@@ -239,10 +237,6 @@ function reasonOf(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
 
-type AnchorInput = { name: string };
-type AnchorState = { phase: "hold"; wakes: number };
-type AnchorOutcome = { done: true };
-
 type ReporterInput = {
 	/** Which subagent this report belongs to. */
 	name: string;
@@ -273,36 +267,8 @@ type ReporterOutcome =
 export function createSubagents(host: SubagentHost): { tools: Extension; limits: Extension } {
 	type ReporterRuntime = TaskRuntime<ReporterInput, ReporterState, ReporterOutcome, object>;
 
-	/**
-	 * The anchor of one subagent: the task the child conversation hangs from.
-	 *
-	 * It is `background`, which is the whole point — an ordinary abort, a `/stop`,
-	 * or an idle wait on the main conversation stops at this task, so a subagent
-	 * never blocks the room. It sleeps and re-parks; it owns no work itself.
-	 */
-	const anchorTask = defineTask<AnchorInput, AnchorState, AnchorOutcome, object>({
-		name: "subagent-anchor",
-		version: 1,
-		initial: () => ({ phase: "hold", wakes: 0 }),
-		phases: {
-			hold: async (task, runtime, context) => {
-				try {
-					await runtime.sleep(runtime.now() + ANCHOR_HOLD_MS, context);
-				} catch {
-					// Invocation cancelled (shutdown, restart, abort): leave the task live;
-					// a fresh invocation re-enters this phase and sleeps again.
-					return;
-				}
-				await runtime.commit(
-					() => ({ status: "running", checkpoint: { phase: "hold", wakes: task.state.checkpoint.wakes + 1 } }),
-					context,
-				);
-			},
-		},
-		abort: async (_task, runtime, context) => {
-			await runtime.commit(() => ({ status: "terminal", outcome: { status: "completed", result: { done: true } } }), context);
-		},
-	});
+	/** The anchor of one subagent: the task the child conversation hangs from. */
+	const anchorTask = defineAnchorTask("subagent-anchor");
 
 	/** Deliver one report on both surfaces: main conversation input, then the room. */
 	const deliver = async (runtime: ReporterRuntime, context: Context, name: string, text: string): Promise<void> => {

@@ -254,6 +254,11 @@ export function str(value: unknown): string | null {
 	return typeof value === "string" ? value : null;
 }
 
+/** A JSON object, not an array and not null: the shape almost every record starts as. */
+export function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 /** Ledger records are stored as JSON text in some eras and objects in others. */
 export function parseRecord(record: unknown): Record<string, unknown> | null {
 	if (record && typeof record === "object" && !Array.isArray(record)) {

@@ -79,7 +79,7 @@ import {
 	type EventId,
 	type MatrixCommand,
 } from "./core/steer.ts";
-import { createRoomRouter, OLLAMA_ACTIONS } from "./rooms.ts";
+import { createRoomRouter } from "./rooms.ts";
 import {
 	createProjects,
 	EMPTY_PROJECTS,

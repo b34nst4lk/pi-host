@@ -12,6 +12,7 @@
 // `null` on the wire, and `raw` always carries the upstream object verbatim.
 import fs from "node:fs";
 import {
+	isRecord,
 	num,
 	parseRecord,
 	type SpendBalance,
@@ -225,8 +226,4 @@ function firstNumber(record: Record<string, unknown> | null, keys: readonly stri
 		if (value !== null) return value;
 	}
 	return null;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }

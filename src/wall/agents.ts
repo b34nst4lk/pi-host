@@ -24,7 +24,12 @@ export const RUN_TASK_KINDS = ["pi.generation", "pi.tool", "pi.compaction"] as c
 /** Statuses that mean "in flight": running and waiting are live, completing is finishing. */
 export const RUNNING_STATUSES = ["running", "waiting", "completing"] as const;
 
-export const ANCHOR_KIND = "subagent-anchor";
+/**
+ * Every task kind that owns a persistent child conversation. A subagent anchor is
+ * retirable, a project anchor is long-lived; the reader must see both, or a
+ * retired project reads as alive. One list, so a third kind is one edit.
+ */
+export const ANCHOR_KINDS = ["subagent-anchor", "project-anchor"] as const;
 export const REPORTER_KIND = "subagent-reporter";
 
 /** The main conversation: pi-spike itself. One root per ledger. */

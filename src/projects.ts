@@ -22,7 +22,6 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import {
 	configure,
 	defineDoc,
-	defineTask,
 	section,
 	type ConversationId,
 	type Extension,
@@ -32,15 +31,13 @@ import {
 } from "@earendil-works/pi-durable";
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import { isAbsolute, join, resolve } from "node:path";
+import { defineAnchorTask } from "./anchor.ts";
 import type { GitRunner } from "./subagents.ts";
 
 const context = BACKGROUND_CONTEXT;
 
 /** Project names become directory names and appear in replies: narrow on purpose. */
 export const PROJECT_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,39}$/;
-
-/** How long one anchor invocation holds before it re-parks. */
-const ANCHOR_HOLD_MS = 60 * 60 * 1000;
 
 /** The instructions file a project reads on every request. */
 export const INSTRUCTIONS_FILE = "AGENTS.md";
@@ -107,41 +104,8 @@ export const ProjectDoc = defineDoc<ProjectMarker>({
 
 // --- the anchor ------------------------------------------------------------
 
-type AnchorInput = { name: string };
-type AnchorState = { phase: "hold"; wakes: number };
-type AnchorOutcome = { done: true };
-
-/**
- * What a project conversation hangs from. `background` is the point: an ordinary
- * abort, a `/stop` in the main conversation, or an idle wait stops at this task,
- * so a project never blocks the room that bound it. It owns no work itself.
- */
-const anchorTask = defineTask<AnchorInput, AnchorState, AnchorOutcome, object>({
-	name: "project-anchor",
-	version: 1,
-	initial: () => ({ phase: "hold", wakes: 0 }),
-	phases: {
-		hold: async (task, runtime, taskContext) => {
-			try {
-				await runtime.sleep(runtime.now() + ANCHOR_HOLD_MS, taskContext);
-			} catch {
-				// Invocation cancelled (shutdown, restart, abort): the task stays live and
-				// a fresh invocation re-enters this phase.
-				return;
-			}
-			await runtime.commit(
-				() => ({ status: "running", checkpoint: { phase: "hold", wakes: task.state.checkpoint.wakes + 1 } }),
-				taskContext,
-			);
-		},
-	},
-	abort: async (_task, runtime, taskContext) => {
-		await runtime.commit(
-			() => ({ status: "terminal", outcome: { status: "completed", result: { done: true } } }),
-			taskContext,
-		);
-	},
-});
+/** What a project conversation hangs from: the shared anchor, under its own kind. */
+const anchorTask = defineAnchorTask("project-anchor");
 
 // --- text ------------------------------------------------------------------
 

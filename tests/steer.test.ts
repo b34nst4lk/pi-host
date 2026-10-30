@@ -13,14 +13,12 @@ import {
 	classifySyncBatch,
 	createReplyPump,
 	extractAssistantTexts,
-	forRoom,
 	parseMatrixCommand,
 	pickNewEvents,
 	reactionContent,
 	replyContent,
 	submitMatrixCommand,
 	SYNC_SEEN_CAP,
-	withdrawSubmissions,
 	type SyncState,
 } from "../src/core/steer.ts";
 import { createMatrixClient } from "../src/surfaces/matrix-client.ts";
@@ -251,28 +249,6 @@ describe("steer flow against a real harness", () => {
 		await harness.close(context);
 	});
 
-	it("sweeps tracked submissions on /stop, classifying each outcome", async () => {
-		const { harness, release } = await makeSteerHarness();
-		const root = await harness.root(context);
-		const running = await submitMatrixCommand(root, { action: "input", content: "First question" }, context);
-		const queued = await submitMatrixCommand(root, { action: "input", content: "Never mind" }, context);
-		const result = await withdrawSubmissions([queued, running], context);
-		// the queued one aborts; the placed one reports already_placed (still live until it settles)
-		expect(result.aborted).toEqual(1);
-		expect(result.alreadyPlaced).toEqual(1);
-		expect(result.settled).toEqual(0);
-		release();
-		await running.wait(context);
-		await harness.close(context);
-	});
-});
-
-describe("forRoom (pi-spike as a plain user elsewhere must not steer)", () => {
-	it("accepts only events from the configured room forms", () => {
-		const accepted = new Set(["!room:jacks.im"]);
-		expect(forRoom({ id: "$1", sender: "@jacksim:jacks.im", text: "hi", room: "!room:jacks.im" }, accepted)).toBe(true);
-		expect(forRoom({ id: "$2", sender: "@jacksim:jacks.im", text: "hi", room: "!other:jacks.im" }, accepted)).toBe(false);
-	});
 });
 
 describe("classifySyncBatch (durable sync cursor + first-boot skip)", () => {

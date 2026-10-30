@@ -3,8 +3,8 @@
 // that only exists as a delta chain, an upstream that rate-limits us.
 //
 // The scratch database is built by hand so the tests own its shape: one base
-// revision plus `s`/`t`/`a` deltas for the sync cursor, agents in both places they
-// can appear (the agent's `reported` array and the `reporters` map), an unanswered
+// revision plus `s`/`t`/`a` deltas for the sync cursor, an agent with answers and one
+// with a reporter task but none, an unanswered
 // submission with a reason, and a row whose `record` is not JSON at all.
 import fs from "node:fs";
 import http from "node:http";
@@ -144,7 +144,8 @@ function fixture(): Fixture {
 		[4, [["a", ["batch"], "99"]]],
 		[5, [["s", ["seen"], ["a", "b"]]]],
 	]);
-	// The fleet: one agent reported through its array, one only through `reporters`.
+	// The fleet: one agent with answers in `reported[]`, one with a `reporters` TASK id
+	// and no answer — the task id must never be read as an entry id.
 	writeDocument(
 		db,
 		8,
@@ -199,7 +200,8 @@ describe("ledger", () => {
 		expect(fleet.ok).toBe(true);
 		const byName = Object.fromEntries(fleet.agents.map((agent) => [agent.name, agent]));
 		expect(byName.reader).toMatchObject({ reports: 1, last_report_entry: 2393, state: "reported", branch: "worktree-reader" });
-		expect(byName["wall-ui"]).toMatchObject({ reports: 1, last_report_entry: 2409, state: "reported" });
+		// 2409 is a task id in `reporters`, not an answer: no answer, no last reply.
+		expect(byName["wall-ui"]).toMatchObject({ reports: 0, last_report_entry: null, state: "waiting" });
 	});
 
 	it("degrades to nulls — never throws — when the ledger is missing", () => {

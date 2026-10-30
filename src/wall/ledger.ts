@@ -17,7 +17,7 @@ import { DatabaseSync } from "node:sqlite";
 import {
 	agentState,
 	type AgentState,
-	ANCHOR_KIND,
+	ANCHOR_KINDS,
 	anchorDetail,
 	busyTasks,
 	type AnchorFact,
@@ -47,11 +47,13 @@ import {
 	type Counts,
 	freshness,
 	isoFrom,
+	isRecord,
 	kindVariants,
 	type LogEntry,
 	num,
 	parseRecord,
 	secondsBetween,
+	str,
 	type DaemonVitals,
 	type FleetReport,
 	type LedgerVitals,
@@ -263,23 +265,20 @@ export function createLedger(options: LedgerOptions): Ledger {
 		const record = parseRecord(probe.value?.state);
 		const agents = record ? parseRecord(record.agents) : null;
 		if (!agents) return { ok: true, error: null, agents: [] };
-		// Two write paths record a report: the `reported` array on the agent, and the
-		// `reporters` map (name → newest report entry) the daemon maintains.
-		const reporters = record ? parseRecord(record.reporters) : null;
+		// ONE owner: `reported[]` holds answer ENTRY ids, so the newest one is the last
+		// reply. The `reporters` map is task ids (the daemon reads them to report a
+		// reporter's status) — a different counter, never an entry id.
 		const out: AgentReport[] = [];
 		for (const [name, raw] of Object.entries(agents)) {
 			const entry = parseRecord(raw);
 			const reported = Array.isArray(entry?.reported) ? entry.reported.filter(isNumber) : [];
-			const newest = reported.length > 0 ? Math.max(...reported) : null;
-			const fromReporters = num(reporters?.[name]);
-			const lastReportEntry =
-				newest === null ? fromReporters : fromReporters === null ? newest : Math.max(newest, fromReporters);
+			const lastReportEntry = reported.length > 0 ? Math.max(...reported) : null;
 			out.push({
 				name,
 				branch: `worktree-${name}`,
 				worktree: entry ? str(entry.worktree) : null,
 				conversation_id: entry ? num(entry.conversationId) : null,
-				reports: reported.length > 0 ? reported.length : lastReportEntry === null ? 0 : 1,
+				reports: reported.length,
 				last_report_entry: lastReportEntry,
 				state: lastReportEntry === null ? "waiting" : "reported",
 			});
@@ -687,9 +686,6 @@ type ProjectRow = {
 	readonly summary: string | null;
 };
 
-/** Anchor kinds the daemon writes for a project (a project is an anchor too). */
-const PROJECT_ANCHOR_KIND = "project-anchor";
-
 /**
  * `app.projects`: the daemon's project registry. It stores POINTERS (room,
  * conversation, directory, the path of `AGENTS.md`), so the wall can name a
@@ -925,11 +921,12 @@ function readChildFacts(db: DatabaseSync, conversation: number): ChildFacts {
  * both or a retired project would read as alive.
  */
 function readAnchors(db: DatabaseSync): AnchorFact[] {
-	const [plain, quoted] = kindVariants(ANCHOR_KIND);
-	const [projectPlain, projectQuoted] = kindVariants(PROJECT_ANCHOR_KIND);
+	const variants = ANCHOR_KINDS.flatMap((kind) => kindVariants(kind));
 	const rows = db
-		.prepare("select id, status, conversation_id, record from tasks where kind in (?, ?, ?, ?) order by id")
-		.all(plain, quoted, projectPlain, projectQuoted) as Record<string, unknown>[];
+		.prepare(
+			`select id, status, conversation_id, record from tasks where kind in (${variants.map(() => "?").join(", ")}) order by id`,
+		)
+		.all(...variants) as Record<string, unknown>[];
 	const out: AnchorFact[] = [];
 	for (const row of rows) {
 		const id = num(row.id);
@@ -1196,16 +1193,8 @@ function emptySubmissions(): SubmissionCounts {
 	return { queued: null, placed: null, done: null, unanswered: null };
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function isNumber(value: unknown): value is number {
 	return typeof value === "number" && Number.isFinite(value);
-}
-
-function str(value: unknown): string | null {
-	return typeof value === "string" ? value : null;
 }
 
 /** `"subagent:2393"` → `subagent:2393`; anything else is left alone. */

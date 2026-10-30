@@ -19,6 +19,7 @@
 // definition of what a `kind=` list means.
 import fs from "node:fs";
 import path from "node:path";
+import { isRecord } from "./contract.ts";
 
 /** Page size when the caller says nothing, and the hard ceiling. */
 export const DEFAULT_LIMIT = 50;
@@ -165,10 +166,6 @@ function oneLine(text: string, max = 500): string {
 function firstLine(text: string, max = 160): string {
 	const line = text.split("\n").map((part) => part.trim()).find((part) => part.length > 0) ?? "";
 	return line.length > max ? `${line.slice(0, max)}…` : line;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /** The text of a message content: a string, or the `text` blocks of a block list. */

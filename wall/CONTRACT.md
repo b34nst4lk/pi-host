@@ -155,9 +155,11 @@ ledger. One request, one snapshot, `200` even when parts failed.
   `submissions` table stores no timestamp, and inventing one would be a lie.
 - `fleet.agents` — from the live `app.subagents` document
   (`documents.kind = '"app.subagents"'`, replayed the same way as the sync cursor):
-  `agents` is `{ "<name>": { conversationId, reported: number[], worktree } }` and the
-  daemon also records reports as `reporters: { "<name>": <entry id> }`, so
-  `last_report_entry` is the newest of the two (`reported` array, else `reporters`).
+  `agents` is `{ "<name>": { conversationId, reported: number[], worktree } }` and
+  `reported[]` holds answer **entry** ids, so `last_report_entry` is the newest of
+  them and `reports` is how many there are. The document's `reporters` map holds
+  **task** ids (what the daemon asks about a reporter's status); it is a different
+  counter and is never read as an entry id.
   `branch` is `"worktree-" + name`, `state` is `"reported"` when an entry is known
   else `"waiting"`. No document → `agents: []`.
 
