@@ -80,6 +80,10 @@
   </head>
   <body>
     <div id="app"></div>
-    <script type="module" src="./js/wall/wall.mjs"></script>
+    <script type="module">
+      // gleam's compiled `main` is exported, not self-invoked: mount the app here.
+      import { main } from "./js/wall/wall.mjs";
+      main();
+    </script>
   </body>
 </html>
