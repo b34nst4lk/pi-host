@@ -54,7 +54,7 @@ proves the model → decode → view chain, not a parallel code path.
 | `src/wall.gleam` | `init`/`update`, 10 s poll, `?fake=1`, `lustre.start`; the logs tab's query effects and the browser tab's rail/search/jump effects |
 | `src/wall/model.gleam` | types, ring buffer of samples, formatters, sparkline maths, the browser's rail ordering and jump/anchor transitions |
 | `src/wall/decode.gleam` | defensive JSON → model (`None`/`"unknown"` for anything odd) |
-| `src/wall/view.gleam` | pure `Model -> Element`: four cards (VITALS, SPEND, AGENTS, QUEUE) behind a dashboard/logs/browser tab bar, one row renderer shared by both log views, plus the full-width LOGS browser and the BROWSER rail/pane; no chart library |
+| `src/wall/view.gleam` | pure `Model -> Element`: four cards (VITALS, SPEND, AGENTS, QUEUE) behind a dashboard/logs/browser/projects tab bar, one row renderer shared by both log views, plus the full-width LOGS browser and the BROWSER rail/pane; no chart library |
 | `src/wall/fake.gleam` | fixture JSON for offline development |
 | `src/wall/pretty.gleam` | indents a record for display; never touches the wire |
 | `src/wall/ffi.gleam` + `.ffi.mjs` | the only browser API surface: fetch, timer, clock, query string |
@@ -119,6 +119,31 @@ LOGS shows one space's newest rows, BROWSER starts from a list of spaces.
 
 Both tabs share the row code on purpose: a second renderer would drift, and this is
 the view that has to stay honest about what the ledger says.
+
+## PROJECTS: the fleet's rooms
+
+A **project** is a Matrix room bound to its own persistent conversation. The daemon
+binds it (`/project new <name>`, `/project bind <name> <path>`), keeps a
+`project-anchor` task holding that conversation, and records the pointers in
+`app.projects`. Plain text typed in a bound room goes straight into that project's
+conversation — it never passes through pi-spike.
+
+The wall's job is to show them without pretending to own them:
+
+* **One card list, three kinds.** `agents.named[]` carries `kind` (`project`,
+  `subagent`) and `agents.spike.kind` is `main`. The PROJECTS pane is that list
+  filtered, so a project's state is decided by the same precedence ladder (and the
+  same `agentState()` function) as an agent's — the two views cannot disagree.
+* **One row per project.** Name and state badge, the room in short form
+  (`!ig3PmgqC-r…XpufmU` — long ids are clipped, short ones left alone), the
+  directory it works in, `N entries` of history, and the first line of its
+  `AGENTS.md` as the summary. A project with no room, no directory or no summary
+  says so in words; nothing renders a bare `null`.
+* **No request of its own.** The pane renders from the 10 s `/api/state` poll that
+  was already running; the reader adds one query per project conversation for the
+  entry count. An empty pane teaches the command instead of showing a blank box.
+* **Read-only, as always.** The wall never reads `AGENTS.md` and never writes a
+  registry. A stale summary is possible; a wrong state is not.
 
 ## The reader
 

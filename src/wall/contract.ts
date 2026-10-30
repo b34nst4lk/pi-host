@@ -132,14 +132,30 @@ export type StateReport = {
 /** Precedence order documented in `agents.ts`; `unknown` = the ledger could not be read. */
 export type AgentStateValue = "working" | "queued" | "reporting" | "alive" | "orphaned" | "retired" | "unknown";
 
+/**
+ * What a card IS, so one enum covers the fleet: the wall renders one card per
+ * agent and the PROJECTS view is that same list filtered by `kind`.
+ *
+ * - `main`     — pi-spike, the conversation nothing owns;
+ * - `project`  — a room bound to a persistent child conversation (`app.projects`);
+ * - `subagent` — a worktree child the daemon spawned and can retire.
+ */
+export type AgentKind = "main" | "project" | "subagent";
+
 /** pi-spike itself: the main conversation, judged by the same enum. */
 export type SpikeCard = {
+	kind: AgentKind;
 	state: AgentStateValue;
 	conversation: number | null;
 };
 
-/** One named subagent. `last_reply` is the newest answer entry the registry knows. */
+/**
+ * One named agent: a subagent, or a project. `last_reply` is the newest answer
+ * entry the registry knows. The project-only fields are `null` on subagent cards,
+ * so the JSON shape stays one flat record and an old wall still decodes.
+ */
 export type NamedAgentCard = {
+	kind: AgentKind;
 	name: string;
 	state: AgentStateValue;
 	branch: string;
@@ -147,6 +163,14 @@ export type NamedAgentCard = {
 	last_reply: number | null;
 	conversation: number | null;
 	anchor: number | null;
+	/** Projects only: the Matrix room that steers it. */
+	room: string | null;
+	/** Projects only: the directory the project works in. */
+	cwd: string | null;
+	/** Projects only: what its `AGENTS.md` says it is (first meaningful line). */
+	summary: string | null;
+	/** Projects only: how many entries its conversation holds. */
+	entries: number | null;
 };
 
 /** A held anchor nothing names. `anchor` is the anchor task id, not the conversation. */

@@ -75,7 +75,11 @@ state = app.update(
   new model.BrowserLogsArrived(fake.browser_logs_json(landing, state.filters, 0)),
 )[0];
 const jumped = flatten(view(state));
-const html = dashboard + logs + rail + jumped;
+// ...and the PROJECTS tab: the same agent cards, filtered by kind — the pane must
+// name the project, the room in short form, the directory and the history size.
+state = app.update(state, new model.TabChosen(new model.ProjectsTab()))[0];
+const projects = flatten(view(state));
+const html = dashboard + logs + rail + jumped + projects;
 const text = html.replace(/<[^>]+>/g, " ");
 const needles = [
   "THE WALL",
@@ -125,6 +129,14 @@ const needles = [
   "the browser tab is up",
   "child: the browser tab renders",
   "log-row hit",
+  // round 5: the projects view — a room bound to its own conversation
+  ">PROJECTS<",
+  "the-wall",
+  "!ig3PmgqC-r…XpufmU",
+  "/home/jacksim/hermes-users/jacksim/workspace/projects/the-wall",
+  "1,832 entries",
+  "no AGENTS.md summary yet",
+  "2 project(s) — see the PROJECTS tab",
 ];
 const missing = needles.filter((n) => !html.includes(n));
 const polylines = (html.match(/<polyline/g) || []).length;

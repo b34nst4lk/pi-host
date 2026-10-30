@@ -10,8 +10,19 @@ import {
 } from "../gleam.mjs";
 import * as $model from "../wall/model.mjs";
 
+/**
+ * One project card: the same shape as a subagent card, plus where it lives.
+ * 
+ * @ignore
+ */
+function project(name, state, room, cwd, summary, entries) {
+  return ((((((((((("{\"kind\":\"project\",\"name\":\"" + name) + "\",\"state\":\"") + state) + "\",\"branch\":\"\",\"worktree\":null,\"last_reply\":null,\"room\":\"") + room) + "\",\"cwd\":\"") + cwd) + "\",\"summary\":\"") + summary) + "\",\"entries\":") + $int.to_string(
+    entries,
+  )) + ",\"conversation\":21,\"anchor\":22}";
+}
+
 function card(name, state, branch, worktree, last_reply) {
-  return ((((((((("{\"name\":\"" + name) + "\",\"state\":\"") + state) + "\",\"branch\":\"") + branch) + "\",\"worktree\":\"") + worktree) + "\",\"last_reply\":") + $int.to_string(
+  return ((((((((("{\"kind\":\"subagent\",\"name\":\"" + name) + "\",\"state\":\"") + state) + "\",\"branch\":\"") + branch) + "\",\"worktree\":\"") + worktree) + "\",\"last_reply\":") + $int.to_string(
     last_reply,
   )) + ",\"conversation\":15,\"anchor\":16}";
 }
@@ -46,7 +57,7 @@ export function state_json(poll) {
     _block$1 = 2;
   }
   let errors = _block$1;
-  return ((((((((((((((((((((((((((((((((((((((((((((((((("{\"v\":1,\"ok\":true," + "\"vitals\":{") + "\"ledger\":{\"ok\":true,\"error\":null,\"path\":\"storage/session.sqlite\",\"bytes\":") + $int.to_string(
+  return ((((((((((((((((((((((((((((((((((((((((((((((((((((("{\"v\":1,\"ok\":true," + "\"vitals\":{") + "\"ledger\":{\"ok\":true,\"error\":null,\"path\":\"storage/session.sqlite\",\"bytes\":") + $int.to_string(
     5918720 + poll * 4096,
   )) + ",\"wal_bytes\":4161232,\"entries\":") + $int.to_string(entries)) + ",\"tasks_live\":1,\"submissions_live\":0},") + "\"sync\":{\"ok\":true,\"error\":null,\"batch\":\"s114_0_1_2_3_4_5\",\"seq\":") + $int.to_string(
     41 + poll,
@@ -64,7 +75,7 @@ export function state_json(poll) {
     "reader",
     "worktree-reader",
     2,
-  )) + ",") + agent("wall-ui", "worktree-wall-ui", 1)) + "]},") + "\"agents\":{\"ok\":true,\"error\":null,") + "\"spike\":{\"state\":\"working\",\"conversation\":1},") + "\"named\":[") + card(
+  )) + ",") + agent("wall-ui", "worktree-wall-ui", 1)) + "]},") + "\"agents\":{\"ok\":true,\"error\":null,") + "\"spike\":{\"kind\":\"main\",\"state\":\"working\",\"conversation\":1},") + "\"named\":[") + card(
     "reader",
     "working",
     "worktree-reader",
@@ -82,6 +93,20 @@ export function state_json(poll) {
     "worktree-docs",
     "/opt/pi-host/workspace/worktrees/docs",
     2181,
+  )) + ",") + project(
+    "the-wall",
+    "working",
+    "!ig3PmgqC-rUdJMNvo6sfPHRtUlIMaeU8XqidpXpufmU",
+    "/home/jacksim/hermes-users/jacksim/workspace/projects/the-wall",
+    "the wall: a read-only window on the ledger",
+    1832,
+  )) + ",") + project(
+    "docs",
+    "alive",
+    "!docs:jacks.im",
+    "/home/jacksim/hermes-users/jacksim/workspace/projects/docs",
+    "",
+    12,
   )) + "],") + "\"orphans\":[{\"anchor\":2201,\"conversation\":2202}],") + "\"retired\":2,") + "\"work\":{\"in_flight\":") + $int.to_string(
     (poll % 3) + 3,
   )) + ",\"queued\":") + $int.to_string(poll % 2)) + "}}}";

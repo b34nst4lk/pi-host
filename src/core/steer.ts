@@ -4,6 +4,17 @@
 // harness. Inbox semantics follow the pi-durable examples (20-inbox.ts).
 // Migrated verbatim (logic unchanged) from the spike's packages/durable/
 // steer_core.ts; only the import specifiers differ.
+//
+// Two things this module knows about the MULTI-ROOM setup (round 5):
+//
+//  * `/project ...` is routing, not steering. It is recognized in ANY joined room
+//    (that is how a room becomes bound), and every other command is only
+//    meaningful inside a room something watches. `parseMatrixCommand` stays a
+//    pure text → command map so both rules live in the caller's route table.
+//  * Matrix event ids are `$`-global (the homeserver, not the room, mints them),
+//    so ONE `seen` set may span every room: two rooms cannot collide on an id.
+//    The durable sync-state list and the pump cursors stay single-valued for the
+//    same reason. If that ever stops being true, both become per-room.
 import type { Context } from "@earendil-works/chord";
 import type { Submission, SubmissionDraft } from "@earendil-works/pi-durable";
 import { USAGE_RANGES, type UsageRange } from "./ollama-format.ts";
@@ -19,7 +30,13 @@ export type MatrixCommand =
 	| { readonly action: "usage-invalid"; readonly text: string }
 	| { readonly action: "balance" }
 	| { readonly action: "models" }
-	| { readonly action: "embed"; readonly content: string };
+	| { readonly action: "embed"; readonly content: string }
+	// The project commands (round 5): a room bound to a persistent child
+	// conversation. `path` is "" when the message carried none.
+	| { readonly action: "project-new"; readonly name: string; readonly path: string }
+	| { readonly action: "project-bind"; readonly name: string; readonly path: string }
+	| { readonly action: "project-list" }
+	| { readonly action: "project-invalid"; readonly text: string };
 
 /**
  * Map one chat message to a command.
@@ -44,6 +61,11 @@ export function parseMatrixCommand(text: string): MatrixCommand | null {
 	if (first === "/models") return { action: "models" };
 	if (first === "/embed") return rest.length > 0 ? { action: "embed", content: rest } : null;
 	if (first === "/usage") return parseUsage(rest);
+	// A prefix match, not a token match: `/projects list` is a typo of `/project
+	// list`, and steering a project with the literal text is the wrong answer in
+	// every room. It parses as an unknown project subcommand, which the daemon
+	// answers with the teaching hint.
+	if (trimmed.startsWith("/project")) return parseProject(trimmed.slice("/project".length));
 	return { action: "input", content: trimmed };
 }
 
@@ -70,6 +92,42 @@ function parseUsage(rest: string): MatrixCommand {
 		range = named;
 	}
 	return { action: "usage", range: range ?? DEFAULT_USAGE_RANGE, groupByModel };
+}
+
+/**
+ * `/project new <name> [path]`, `/project bind <name> <path>`, `/project list`.
+ *
+ * The room the command arrives in is the room that gets bound (`/project bind`
+ * needs no id: a command never binds a room the sender is not in), so a name is
+ * the only thing a message has to carry twice. A missing name, an unknown
+ * subcommand or a missing path all become `project-invalid`, answered with the
+ * teaching hint rather than a guess.
+ */
+function parseProject(rest: string): MatrixCommand {
+	const trimmed = rest.trim();
+	if (trimmed.length === 0) return { action: "project-invalid", text: "" };
+	const spaceAt = trimmed.search(/\s/);
+	const sub = (spaceAt === -1 ? trimmed : trimmed.slice(0, spaceAt)).toLowerCase();
+	const args = spaceAt === -1 ? "" : trimmed.slice(spaceAt + 1).trim();
+	if (sub === "list") return { action: "project-list" };
+	if (sub !== "new" && sub !== "bind") return { action: "project-invalid", text: sub };
+	const nameAt = args.search(/\s/);
+	const name = nameAt === -1 ? args : args.slice(0, nameAt);
+	// The rest of the line is the path, spaces and all: `/project bind x /a b` is
+	// a directory named `a b`, not two arguments.
+	const path = nameAt === -1 ? "" : args.slice(nameAt + 1).trim();
+	if (name.length === 0) return { action: "project-invalid", text: `${sub} (no name)` };
+	return sub === "new" ? { action: "project-new", name, path } : { action: "project-bind", name, path };
+}
+
+/**
+ * A room id shortened for a one-line reply: `!ig3PmgqC-rUd…pXpufmU`. The daemon
+ * answers in the room it was asked in, so the short form is a label, not a
+ * routing key — the full id is what `app.projects` stores.
+ */
+export function roomShort(roomId: string): string {
+	if (roomId.length <= 20) return roomId;
+	return `${roomId.slice(0, 11)}…${roomId.slice(-6)}`;
 }
 
 /**
@@ -290,7 +348,13 @@ export async function submitMatrixCommand(
 		case "balance":
 		case "models":
 		case "embed":
-			throw new Error(`submitMatrixCommand cannot place ${command.action}; the daemon handles controls and Ollama queries itself`);
+		case "project-new":
+		case "project-bind":
+		case "project-list":
+		case "project-invalid":
+			throw new Error(
+				`submitMatrixCommand cannot place ${command.action}; the daemon handles controls, Ollama queries and projects itself`,
+			);
 	}
 }
 

@@ -216,32 +216,40 @@ export function decodes_a_reader_state_test() {
   $should.equal(_pipe$2, new Some(41));
   let _pipe$3 = state.queue.inbox_depth;
   $should.equal(_pipe$3, new Some(0));
-  let _pipe$4 = state.agents.spike_state;
-  $should.equal(_pipe$4, "working");
-  let _pipe$5 = state.agents.in_flight;
-  $should.equal(_pipe$5, new Some(3));
-  let _pipe$6 = state.agents.queued;
-  $should.equal(_pipe$6, new Some(0));
-  let _pipe$7 = state.agents.retired;
-  $should.equal(_pipe$7, new Some(2));
-  let _pipe$8 = $list.length(state.agents.named);
-  $should.equal(_pipe$8, 3);
+  let _pipe$4 = state.agents.spike_kind;
+  $should.equal(_pipe$4, "main");
+  let _pipe$5 = state.agents.spike_state;
+  $should.equal(_pipe$5, "working");
+  let _pipe$6 = state.agents.in_flight;
+  $should.equal(_pipe$6, new Some(3));
+  let _pipe$7 = state.agents.queued;
+  $should.equal(_pipe$7, new Some(0));
+  let _pipe$8 = state.agents.retired;
+  $should.equal(_pipe$8, new Some(2));
+  let _pipe$9 = $list.length(state.agents.named);
+  $should.equal(_pipe$9, 5);
+  let _pipe$10 = $model.subagent_cards(state.agents);
+  let _pipe$11 = $list.length(_pipe$10);
+  $should.equal(_pipe$11, 3);
+  let _pipe$12 = $model.project_cards(state.agents);
+  let _pipe$13 = $list.length(_pipe$12);
+  $should.equal(_pipe$13, 2);
   let $ = $list.first(state.agents.named);
   if ($ instanceof Ok) {
     let card = $[0];
-    let _pipe$9 = card.name;
-    $should.equal(_pipe$9, "reader");
-    let _pipe$10 = card.state;
-    $should.equal(_pipe$10, "working");
-    let _pipe$11 = card.branch;
-    $should.equal(_pipe$11, "worktree-reader");
-    let _pipe$12 = card.last_reply;
-    $should.equal(_pipe$12, new Some(2393));
+    let _pipe$14 = card.name;
+    $should.equal(_pipe$14, "reader");
+    let _pipe$15 = card.state;
+    $should.equal(_pipe$15, "working");
+    let _pipe$16 = card.branch;
+    $should.equal(_pipe$16, "worktree-reader");
+    let _pipe$17 = card.last_reply;
+    $should.equal(_pipe$17, new Some(2393));
   } else {
     $should.fail();
   }
-  let _pipe$9 = $list.length(state.agents.orphans);
-  return $should.equal(_pipe$9, 1);
+  let _pipe$14 = $list.length(state.agents.orphans);
+  return $should.equal(_pipe$14, 1);
 }
 
 export function decodes_a_reader_spend_test() {
@@ -254,15 +262,15 @@ export function decodes_a_reader_spend_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      144,
+      149,
       "decodes_a_reader_spend_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 4732,
-        end: 4787,
-        pattern_start: 4743,
-        pattern_end: 4752
+        start: 5033,
+        end: 5088,
+        pattern_start: 5044,
+        pattern_end: 5053
       }
     )
   }
@@ -290,15 +298,15 @@ export function tolerates_missing_fields_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      154,
+      159,
       "tolerates_missing_fields_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 5084,
-        end: 5144,
-        pattern_start: 5095,
-        pattern_end: 5104
+        start: 5385,
+        end: 5445,
+        pattern_start: 5396,
+        pattern_end: 5405
       }
     )
   }
@@ -326,15 +334,15 @@ export function rejects_a_non_json_body_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      164,
+      169,
       "rejects_a_non_json_body_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 5482,
-        end: 5554,
-        pattern_start: 5493,
-        pattern_end: 5507
+        start: 5783,
+        end: 5855,
+        pattern_start: 5794,
+        pattern_end: 5808
       }
     )
   }
@@ -356,15 +364,15 @@ export function spend_without_money_is_unknown_not_zero_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      170,
+      175,
       "spend_without_money_is_unknown_not_zero_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 5768,
-        end: 5855,
-        pattern_start: 5779,
-        pattern_end: 5788
+        start: 6069,
+        end: 6156,
+        pattern_start: 6080,
+        pattern_end: 6089
       }
     )
   }
@@ -451,15 +459,15 @@ export function decodes_all_seven_agent_states_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      230,
+      235,
       "decodes_all_seven_agent_states_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 7960,
-        end: 8001,
-        pattern_start: 7971,
-        pattern_end: 7980
+        start: 8261,
+        end: 8302,
+        pattern_start: 8272,
+        pattern_end: 8281
       }
     )
   }
@@ -503,15 +511,15 @@ export function agent_without_state_is_unknown_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      247,
+      252,
       "agent_without_state_is_unknown_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 8369,
-        end: 8471,
-        pattern_start: 8380,
-        pattern_end: 8389
+        start: 8670,
+        end: 8772,
+        pattern_start: 8681,
+        pattern_end: 8690
       }
     )
   }
@@ -527,6 +535,7 @@ export function agent_without_state_is_unknown_test() {
 
 export function work_line_test() {
   let agents = new $model.Agents(
+    "main",
     "working",
     $List$Empty$const,
     $List$Empty$const,
@@ -544,6 +553,7 @@ export function orphan_summary_test() {
   let _block;
   let _record = $model.empty_agents();
   _block = new $model.Agents(
+    _record.spike_kind,
     _record.spike_state,
     _record.named,
     listPrepend(new $model.Orphan(2201, new Some(2202)), $List$Empty$const),
@@ -558,6 +568,7 @@ export function orphan_summary_test() {
   $should.equal(_pipe$1, "1 unnamed (prunable)");
   let _pipe$2 = $model.orphan_summary(
     new $model.Agents(
+      one.spike_kind,
       one.spike_state,
       one.named,
       listPrepend(
@@ -585,19 +596,19 @@ export function last_reply_renders_as_entry_or_dash_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      284,
+      290,
       "last_reply_renders_as_entry_or_dash_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 9532,
-        end: 9587,
-        pattern_start: 9543,
-        pattern_end: 9552
+        start: 9857,
+        end: 9912,
+        pattern_start: 9868,
+        pattern_end: 9877
       }
     )
   }
-  let _pipe = state.agents.named;
+  let _pipe = $model.subagent_cards(state.agents);
   let _pipe$1 = $list.map(
     _pipe,
     (card) => {
@@ -774,15 +785,15 @@ export function decodes_a_logs_page_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      401,
+      407,
       "decodes_a_logs_page_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 13363,
-        end: 13438,
-        pattern_start: 13374,
-        pattern_end: 13382
+        start: 13704,
+        end: 13779,
+        pattern_start: 13715,
+        pattern_end: 13723
       }
     )
   }
@@ -801,15 +812,15 @@ export function decodes_a_logs_page_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      405,
+      411,
       "decodes_a_logs_page_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $1,
-        start: 13567,
-        end: 13615,
-        pattern_start: 13578,
-        pattern_end: 13588
+        start: 13908,
+        end: 13956,
+        pattern_start: 13919,
+        pattern_end: 13929
       }
     )
   }
@@ -836,15 +847,15 @@ export function decodes_a_logs_page_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      412,
+      418,
       "decodes_a_logs_page_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $2,
-        start: 13957,
-        end: 14024,
-        pattern_start: 13968,
-        pattern_end: 13979
+        start: 14298,
+        end: 14365,
+        pattern_start: 14309,
+        pattern_end: 14320
       }
     )
   }
@@ -863,15 +874,15 @@ export function decodes_a_logs_page_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      414,
+      420,
       "decodes_a_logs_page_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $3,
-        start: 14104,
-        end: 14167,
-        pattern_start: 14115,
-        pattern_end: 14122
+        start: 14445,
+        end: 14508,
+        pattern_start: 14456,
+        pattern_end: 14463
       }
     )
   }
@@ -900,15 +911,15 @@ export function fake_fixtures_honour_the_filters_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      420,
+      426,
       "fake_fixtures_honour_the_filters_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 14312,
-        end: 14454,
-        pattern_start: 14323,
-        pattern_end: 14331
+        start: 14653,
+        end: 14795,
+        pattern_start: 14664,
+        pattern_end: 14672
       }
     )
   }
@@ -933,15 +944,15 @@ export function fake_fixtures_honour_the_filters_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      427,
+      433,
       "fake_fixtures_honour_the_filters_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $1,
-        start: 14540,
-        end: 14693,
-        pattern_start: 14551,
-        pattern_end: 14563
+        start: 14881,
+        end: 15034,
+        pattern_start: 14892,
+        pattern_end: 14904
       }
     )
   }
@@ -966,15 +977,15 @@ export function fake_fixtures_honour_the_filters_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      434,
+      440,
       "fake_fixtures_honour_the_filters_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $2,
-        start: 14789,
-        end: 14948,
-        pattern_start: 14800,
-        pattern_end: 14811
+        start: 15130,
+        end: 15289,
+        pattern_start: 15141,
+        pattern_end: 15152
       }
     )
   }
@@ -994,15 +1005,15 @@ export function tolerates_a_row_with_missing_fields_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      444,
+      450,
       "tolerates_a_row_with_missing_fields_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 15088,
-        end: 15171,
-        pattern_start: 15099,
-        pattern_end: 15107
+        start: 15429,
+        end: 15512,
+        pattern_start: 15440,
+        pattern_end: 15448
       }
     )
   }
@@ -1015,15 +1026,15 @@ export function tolerates_a_row_with_missing_fields_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      445,
+      451,
       "tolerates_a_row_with_missing_fields_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $1,
-        start: 15174,
-        end: 15221,
-        pattern_start: 15185,
-        pattern_end: 15194
+        start: 15515,
+        end: 15562,
+        pattern_start: 15526,
+        pattern_end: 15535
       }
     )
   }
@@ -1051,15 +1062,15 @@ export function a_failed_read_is_a_message_not_a_crash_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      454,
+      460,
       "a_failed_read_is_a_message_not_a_crash_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 15471,
-        end: 15587,
-        pattern_start: 15482,
-        pattern_end: 15490
+        start: 15812,
+        end: 15928,
+        pattern_start: 15823,
+        pattern_end: 15831
       }
     )
   }
@@ -1081,15 +1092,15 @@ export function rejects_a_non_json_logs_body_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      463,
+      469,
       "rejects_a_non_json_logs_body_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 15763,
-        end: 15822,
-        pattern_start: 15774,
-        pattern_end: 15788
+        start: 16104,
+        end: 16163,
+        pattern_start: 16115,
+        pattern_end: 16129
       }
     )
   }
@@ -1119,20 +1130,472 @@ export function decodes_a_spill_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      472,
+      478,
       "decodes_a_spill_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 16236,
-        end: 16286,
-        pattern_start: 16247,
-        pattern_end: 16261
+        start: 16577,
+        end: 16627,
+        pattern_start: 16588,
+        pattern_end: 16602
       }
     )
   }
   let _pipe$3 = problem;
   let _pipe$4 = $string.starts_with(_pipe$3, "unexpected response shape: ");
+  return $should.be_true(_pipe$4);
+}
+
+function sample_projects() {
+  let _record = $model.empty_agents();
+  return new $model.Agents(
+    _record.spike_kind,
+    _record.spike_state,
+    listPrepend(
+      new $model.AgentCard(
+        "project",
+        "the-wall",
+        "working",
+        "",
+        "",
+        Option$None$const,
+        new Some("!ig3PmgqC-rUdJMNvo6sfPHRtUlIMaeU8XqidpXpufmU"),
+        new Some("/work/projects/the-wall"),
+        new Some("the wall: a read-only window on the ledger"),
+        new Some(1832),
+      ),
+      listPrepend(
+        new $model.AgentCard(
+          "project",
+          "docs",
+          "retired",
+          "",
+          "",
+          Option$None$const,
+          Option$None$const,
+          Option$None$const,
+          new Some(""),
+          Option$None$const,
+        ),
+        listPrepend(
+          new $model.AgentCard(
+            "subagent",
+            "reader",
+            "alive",
+            "worktree-reader",
+            "/w/reader",
+            new Some(2393),
+            Option$None$const,
+            Option$None$const,
+            Option$None$const,
+            Option$None$const,
+          ),
+          $List$Empty$const,
+        ),
+      ),
+    ),
+    _record.orphans,
+    _record.retired,
+    _record.in_flight,
+    _record.queued,
+  );
+}
+
+function projects_model() {
+  let _record = $model.initial($model.Mode$LiveMode$const);
+  return new $model.Model(
+    _record.mode,
+    _record.vitals,
+    _record.spend,
+    new Some(sample_projects()),
+    _record.queue,
+    _record.samples,
+    _record.polls,
+    _record.error,
+    $model.Tab$ProjectsTab$const,
+    _record.filters,
+    _record.logs,
+    _record.browser,
+  );
+}
+
+export function room_short_keeps_short_ids_and_clips_long_ones_test() {
+  let _pipe = $model.room_short("!docs:jacks.im");
+  $should.equal(_pipe, "!docs:jacks.im");
+  let _pipe$1 = $model.room_short(
+    "!ig3PmgqC-rUdJMNvo6sfPHRtUlIMaeU8XqidpXpufmU",
+  );
+  $should.equal(_pipe$1, "!ig3PmgqC-r…XpufmU");
+  let _pipe$2 = $model.room_short("!abcdefghij:jacks.im");
+  return $should.equal(_pipe$2, "!abcdefghij:jacks.im");
+}
+
+export function project_line_names_the_room_and_the_history_test() {
+  let projects = sample_projects();
+  let $ = $model.project_cards(projects);
+  let the_wall;
+  let docs;
+  if ($ instanceof $Empty) {
+    throw makeError(
+      "let_assert",
+      FILEPATH,
+      "wall_test",
+      553,
+      "project_line_names_the_room_and_the_history_test",
+      "Pattern match failed, no pattern matched the value.",
+      {
+        value: $,
+        start: 18894,
+        end: 18953,
+        pattern_start: 18905,
+        pattern_end: 18921
+      }
+    )
+  } else {
+    let $1 = $.tail;
+    if ($1 instanceof $Empty) {
+      throw makeError(
+        "let_assert",
+        FILEPATH,
+        "wall_test",
+        553,
+        "project_line_names_the_room_and_the_history_test",
+        "Pattern match failed, no pattern matched the value.",
+        {
+          value: $,
+          start: 18894,
+          end: 18953,
+          pattern_start: 18905,
+          pattern_end: 18921
+        }
+      )
+    } else if ($1.tail instanceof $Empty) {
+      the_wall = $.head;
+      docs = $1.head;
+    } else {
+      throw makeError(
+        "let_assert",
+        FILEPATH,
+        "wall_test",
+        553,
+        "project_line_names_the_room_and_the_history_test",
+        "Pattern match failed, no pattern matched the value.",
+        {
+          value: $,
+          start: 18894,
+          end: 18953,
+          pattern_start: 18905,
+          pattern_end: 18921
+        }
+      )
+    }
+  }
+  let _pipe = $model.project_line(the_wall);
+  $should.equal(_pipe, "the-wall — room !ig3PmgqC-r…XpufmU — 1,832 entries");
+  let _pipe$1 = $model.project_line(docs);
+  return $should.equal(_pipe$1, "docs — room no room — — entries");
+}
+
+export function project_fallbacks_never_invent_a_directory_or_a_summary_test() {
+  let $ = $model.project_cards(sample_projects());
+  let the_wall;
+  let docs;
+  if ($ instanceof $Empty) {
+    throw makeError(
+      "let_assert",
+      FILEPATH,
+      "wall_test",
+      561,
+      "project_fallbacks_never_invent_a_directory_or_a_summary_test",
+      "Pattern match failed, no pattern matched the value.",
+      {
+        value: $,
+        start: 19292,
+        end: 19360,
+        pattern_start: 19303,
+        pattern_end: 19319
+      }
+    )
+  } else {
+    let $1 = $.tail;
+    if ($1 instanceof $Empty) {
+      throw makeError(
+        "let_assert",
+        FILEPATH,
+        "wall_test",
+        561,
+        "project_fallbacks_never_invent_a_directory_or_a_summary_test",
+        "Pattern match failed, no pattern matched the value.",
+        {
+          value: $,
+          start: 19292,
+          end: 19360,
+          pattern_start: 19303,
+          pattern_end: 19319
+        }
+      )
+    } else if ($1.tail instanceof $Empty) {
+      the_wall = $.head;
+      docs = $1.head;
+    } else {
+      throw makeError(
+        "let_assert",
+        FILEPATH,
+        "wall_test",
+        561,
+        "project_fallbacks_never_invent_a_directory_or_a_summary_test",
+        "Pattern match failed, no pattern matched the value.",
+        {
+          value: $,
+          start: 19292,
+          end: 19360,
+          pattern_start: 19303,
+          pattern_end: 19319
+        }
+      )
+    }
+  }
+  let _pipe = $model.project_dir(the_wall);
+  $should.equal(_pipe, "/work/projects/the-wall");
+  let _pipe$1 = $model.project_summary(the_wall);
+  $should.equal(_pipe$1, "the wall: a read-only window on the ledger");
+  let _pipe$2 = $model.project_dir(docs);
+  $should.equal(_pipe$2, "no directory");
+  let _pipe$3 = $model.project_summary(docs);
+  return $should.equal(_pipe$3, "no AGENTS.md summary yet");
+}
+
+export function project_count_line_teaches_the_command_when_empty_test() {
+  let _pipe = $model.project_count_line($List$Empty$const);
+  $should.equal(
+    _pipe,
+    "no projects yet — bind one with /project new <name> in a room",
+  );
+  let _pipe$1 = $model.project_count_line(
+    $model.project_cards(sample_projects()),
+  );
+  return $should.equal(_pipe$1, "2 projects");
+}
+
+export function a_project_card_decodes_its_own_fields_test() {
+  let json = "{\"v\":1,\"ok\":true,\"agents\":{\"named\":[{\"kind\":\"project\",\"name\":\"the-wall\",\"state\":\"working\",\"branch\":\"\",\"worktree\":null,\"last_reply\":null,\"room\":\"!r:jacks.im\",\"cwd\":\"/w/p\",\"summary\":\"s\",\"entries\":7}]}}";
+  let $ = $decode.state(json);
+  let state;
+  if ($ instanceof Ok) {
+    state = $[0];
+  } else {
+    throw makeError(
+      "let_assert",
+      FILEPATH,
+      "wall_test",
+      580,
+      "a_project_card_decodes_its_own_fields_test",
+      "Pattern match failed, no pattern matched the value.",
+      {
+        value: $,
+        start: 20334,
+        end: 20375,
+        pattern_start: 20345,
+        pattern_end: 20354
+      }
+    )
+  }
+  let $1 = $list.first(state.agents.named);
+  let card;
+  if ($1 instanceof Ok) {
+    card = $1[0];
+  } else {
+    throw makeError(
+      "let_assert",
+      FILEPATH,
+      "wall_test",
+      581,
+      "a_project_card_decodes_its_own_fields_test",
+      "Pattern match failed, no pattern matched the value.",
+      {
+        value: $1,
+        start: 20378,
+        end: 20430,
+        pattern_start: 20389,
+        pattern_end: 20397
+      }
+    )
+  }
+  let _pipe = card.kind;
+  $should.equal(_pipe, "project");
+  let _pipe$1 = card.room;
+  $should.equal(_pipe$1, new Some("!r:jacks.im"));
+  let _pipe$2 = card.cwd;
+  $should.equal(_pipe$2, new Some("/w/p"));
+  let _pipe$3 = card.summary;
+  $should.equal(_pipe$3, new Some("s"));
+  let _pipe$4 = card.entries;
+  $should.equal(_pipe$4, new Some(7));
+  let _pipe$5 = card.worktree;
+  $should.equal(_pipe$5, "");
+  let _pipe$6 = card.last_reply;
+  return $should.equal(_pipe$6, Option$None$const);
+}
+
+export function a_card_without_a_kind_is_a_subagent_test() {
+  let json = "{\"v\":1,\"ok\":true,\"agents\":{\"named\":[{\"name\":\"reader\",\"state\":\"alive\"}]}}";
+  let $ = $decode.state(json);
+  let state;
+  if ($ instanceof Ok) {
+    state = $[0];
+  } else {
+    throw makeError(
+      "let_assert",
+      FILEPATH,
+      "wall_test",
+      595,
+      "a_card_without_a_kind_is_a_subagent_test",
+      "Pattern match failed, no pattern matched the value.",
+      {
+        value: $,
+        start: 21023,
+        end: 21064,
+        pattern_start: 21034,
+        pattern_end: 21043
+      }
+    )
+  }
+  let $1 = $list.first(state.agents.named);
+  let card;
+  if ($1 instanceof Ok) {
+    card = $1[0];
+  } else {
+    throw makeError(
+      "let_assert",
+      FILEPATH,
+      "wall_test",
+      596,
+      "a_card_without_a_kind_is_a_subagent_test",
+      "Pattern match failed, no pattern matched the value.",
+      {
+        value: $1,
+        start: 21067,
+        end: 21119,
+        pattern_start: 21078,
+        pattern_end: 21086
+      }
+    )
+  }
+  let _pipe = card.kind;
+  $should.equal(_pipe, "subagent");
+  let _pipe$1 = $model.project_cards(state.agents);
+  let _pipe$2 = $list.length(_pipe$1);
+  return $should.equal(_pipe$2, 0);
+}
+
+function count_of(haystack, needle) {
+  let _pipe = $string.split(haystack, needle);
+  let _pipe$1 = $list.length(_pipe);
+  return ((parts) => { return parts - 1; })(_pipe$1);
+}
+
+export function the_projects_tab_draws_a_row_per_project_test() {
+  let _block;
+  let _pipe = $view.view(projects_model());
+  _block = $element.to_string(_pipe);
+  let html = _block;
+  let _pipe$1 = html;
+  let _pipe$2 = count_of(_pipe$1, "class=\"project\"");
+  $should.equal(_pipe$2, 2);
+  let _pipe$3 = html;
+  let _pipe$4 = $string.contains(_pipe$3, "PROJECTS");
+  $should.be_true(_pipe$4);
+  let _pipe$5 = html;
+  let _pipe$6 = $string.contains(_pipe$5, "2 projects");
+  $should.be_true(_pipe$6);
+  let _pipe$7 = html;
+  let _pipe$8 = $string.contains(_pipe$7, "the-wall");
+  $should.be_true(_pipe$8);
+  let _pipe$9 = html;
+  let _pipe$10 = $string.contains(_pipe$9, "!ig3PmgqC-r…XpufmU");
+  $should.be_true(_pipe$10);
+  let _pipe$11 = html;
+  let _pipe$12 = $string.contains(_pipe$11, "/work/projects/the-wall");
+  $should.be_true(_pipe$12);
+  let _pipe$13 = html;
+  let _pipe$14 = $string.contains(_pipe$13, "1,832 entries");
+  $should.be_true(_pipe$14);
+  let _pipe$15 = html;
+  let _pipe$16 = $string.contains(_pipe$15, "state-working");
+  $should.be_true(_pipe$16);
+  let _pipe$17 = html;
+  let _pipe$18 = $string.contains(_pipe$17, "no directory");
+  $should.be_true(_pipe$18);
+  let _pipe$19 = html;
+  let _pipe$20 = $string.contains(_pipe$19, "worktree-reader");
+  $should.be_false(_pipe$20);
+  let _pipe$21 = html;
+  let _pipe$22 = $string.contains(_pipe$21, "VITALS");
+  return $should.be_false(_pipe$22);
+}
+
+export function an_empty_projects_tab_teaches_the_command_test() {
+  let _block;
+  let _record = $model.initial($model.Mode$LiveMode$const);
+  _block = new $model.Model(
+    _record.mode,
+    _record.vitals,
+    _record.spend,
+    new Some($model.empty_agents()),
+    _record.queue,
+    _record.samples,
+    _record.polls,
+    _record.error,
+    $model.Tab$ProjectsTab$const,
+    _record.filters,
+    _record.logs,
+    _record.browser,
+  );
+  let empty = _block;
+  let _block$1;
+  let _pipe = $view.view(empty);
+  _block$1 = $element.to_string(_pipe);
+  let html = _block$1;
+  let _pipe$1 = html;
+  let _pipe$2 = count_of(_pipe$1, "class=\"project\"");
+  $should.equal(_pipe$2, 0);
+  let _pipe$3 = html;
+  let _pipe$4 = $string.contains(_pipe$3, "/project new");
+  $should.be_true(_pipe$4);
+  let _pipe$5 = html;
+  let _pipe$6 = $string.contains(_pipe$5, "no projects yet");
+  return $should.be_true(_pipe$6);
+}
+
+export function the_dashboard_agents_card_points_at_the_projects_tab_test() {
+  let _block;
+  let _pipe = $view.view(
+    (() => {
+      let _record = $model.initial($model.Mode$LiveMode$const);
+      return new $model.Model(
+        _record.mode,
+        _record.vitals,
+        _record.spend,
+        new Some(sample_projects()),
+        _record.queue,
+        _record.samples,
+        _record.polls,
+        _record.error,
+        _record.tab,
+        _record.filters,
+        _record.logs,
+        _record.browser,
+      );
+    })(),
+  );
+  _block = $element.to_string(_pipe);
+  let html = _block;
+  let _pipe$1 = html;
+  let _pipe$2 = $string.contains(_pipe$1, "worktree-reader");
+  $should.be_true(_pipe$2);
+  let _pipe$3 = html;
+  let _pipe$4 = $string.contains(_pipe$3, "2 project(s) — see the PROJECTS tab");
   return $should.be_true(_pipe$4);
 }
 
@@ -1185,12 +1648,6 @@ function logs_model() {
     new Some(sample_logs()),
     _record.browser,
   );
-}
-
-function count_of(haystack, needle) {
-  let _pipe = $string.split(haystack, needle);
-  let _pipe$1 = $list.length(_pipe);
-  return ((parts) => { return parts - 1; })(_pipe$1);
 }
 
 export function the_dashboard_is_the_tab_by_default_test() {
@@ -1451,15 +1908,15 @@ function browser_model() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      662,
+      826,
       "browser_model",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 22857,
-        end: 22926,
-        pattern_start: 22868,
-        pattern_end: 22876
+        start: 29498,
+        end: 29567,
+        pattern_start: 29509,
+        pattern_end: 29517
       }
     )
   }
@@ -1484,15 +1941,15 @@ function browser_model() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      669,
+      833,
       "browser_model",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $1,
-        start: 23115,
-        end: 23201,
-        pattern_start: 23126,
-        pattern_end: 23134
+        start: 29756,
+        end: 29842,
+        pattern_start: 29767,
+        pattern_end: 29775
       }
     )
   }
@@ -1539,15 +1996,15 @@ export function the_conversations_decoder_reads_the_rail_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      690,
+      854,
       "the_conversations_decoder_reads_the_rail_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 23631,
-        end: 23700,
-        pattern_start: 23642,
-        pattern_end: 23650
+        start: 30272,
+        end: 30341,
+        pattern_start: 30283,
+        pattern_end: 30291
       }
     )
   }
@@ -1590,15 +2047,15 @@ export function a_conversation_with_drifted_fields_decodes_as_unknown_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      707,
+      871,
       "a_conversation_with_drifted_fields_decodes_as_unknown_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 24244,
-        end: 24407,
-        pattern_start: 24255,
-        pattern_end: 24263
+        start: 30885,
+        end: 31048,
+        pattern_start: 30896,
+        pattern_end: 30904
       }
     )
   }
@@ -1609,15 +2066,15 @@ export function a_conversation_with_drifted_fields_decodes_as_unknown_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      710,
+      874,
       "a_conversation_with_drifted_fields_decodes_as_unknown_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $1,
-        start: 24410,
-        end: 24440,
-        pattern_start: 24421,
-        pattern_end: 24427
+        start: 31051,
+        end: 31081,
+        pattern_start: 31062,
+        pattern_end: 31068
       }
     )
   } else if ($1.tail instanceof $Empty) {
@@ -1627,15 +2084,15 @@ export function a_conversation_with_drifted_fields_decodes_as_unknown_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      710,
+      874,
       "a_conversation_with_drifted_fields_decodes_as_unknown_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $1,
-        start: 24410,
-        end: 24440,
-        pattern_start: 24421,
-        pattern_end: 24427
+        start: 31051,
+        end: 31081,
+        pattern_start: 31062,
+        pattern_end: 31068
       }
     )
   }
@@ -1665,15 +2122,15 @@ export function an_unreadable_conversations_body_is_an_error_not_a_crash_test() 
       "let_assert",
       FILEPATH,
       "wall_test",
-      721,
+      885,
       "an_unreadable_conversations_body_is_an_error_not_a_crash_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 24804,
-        end: 24877,
-        pattern_start: 24815,
-        pattern_end: 24829
+        start: 31445,
+        end: 31518,
+        pattern_start: 31456,
+        pattern_end: 31470
       }
     )
   }
@@ -1691,15 +2148,15 @@ export function an_unreadable_conversations_body_is_an_error_not_a_crash_test() 
       "let_assert",
       FILEPATH,
       "wall_test",
-      724,
+      888,
       "an_unreadable_conversations_body_is_an_error_not_a_crash_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $1,
-        start: 25042,
-        end: 25133,
-        pattern_start: 25053,
-        pattern_end: 25061
+        start: 31683,
+        end: 31774,
+        pattern_start: 31694,
+        pattern_end: 31702
       }
     )
   }
@@ -1721,15 +2178,15 @@ export function the_search_decoder_reads_the_jump_list_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      731,
+      895,
       "the_search_decoder_reads_the_jump_list_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 25313,
-        end: 25377,
-        pattern_start: 25324,
-        pattern_end: 25332
+        start: 31954,
+        end: 32018,
+        pattern_start: 31965,
+        pattern_end: 31973
       }
     )
   }
@@ -1766,15 +2223,15 @@ export function a_drifted_hit_still_renders_but_cannot_be_jumped_to_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      743,
+      907,
       "a_drifted_hit_still_renders_but_cannot_be_jumped_to_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 25727,
-        end: 25856,
-        pattern_start: 25738,
-        pattern_end: 25746
+        start: 32368,
+        end: 32497,
+        pattern_start: 32379,
+        pattern_end: 32387
       }
     )
   }
@@ -1785,15 +2242,15 @@ export function a_drifted_hit_still_renders_but_cannot_be_jumped_to_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      746,
+      910,
       "a_drifted_hit_still_renders_but_cannot_be_jumped_to_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $1,
-        start: 25859,
-        end: 25887,
-        pattern_start: 25870,
-        pattern_end: 25875
+        start: 32500,
+        end: 32528,
+        pattern_start: 32511,
+        pattern_end: 32516
       }
     )
   } else if ($1.tail instanceof $Empty) {
@@ -1803,15 +2260,15 @@ export function a_drifted_hit_still_renders_but_cannot_be_jumped_to_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      746,
+      910,
       "a_drifted_hit_still_renders_but_cannot_be_jumped_to_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $1,
-        start: 25859,
-        end: 25887,
-        pattern_start: 25870,
-        pattern_end: 25875
+        start: 32500,
+        end: 32528,
+        pattern_start: 32511,
+        pattern_end: 32516
       }
     )
   }
@@ -1915,15 +2372,15 @@ export function a_hit_selects_its_conversation_and_opens_a_window_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      799,
+      963,
       "a_hit_selects_its_conversation_and_opens_a_window_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $1,
-        start: 28211,
-        end: 28300,
-        pattern_start: 28222,
-        pattern_end: 28230
+        start: 34852,
+        end: 34941,
+        pattern_start: 34863,
+        pattern_end: 34871
       }
     )
   }
@@ -1943,15 +2400,15 @@ export function a_hit_selects_its_conversation_and_opens_a_window_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      801,
+      965,
       "a_hit_selects_its_conversation_and_opens_a_window_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $3,
-        start: 28426,
-        end: 28473,
-        pattern_start: 28437,
-        pattern_end: 28449
+        start: 35067,
+        end: 35114,
+        pattern_start: 35078,
+        pattern_end: 35090
       }
     )
   }
@@ -2009,15 +2466,15 @@ export function the_same_rows_render_in_the_logs_tab_without_dividers_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      828,
+      992,
       "the_same_rows_render_in_the_logs_tab_without_dividers_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 29839,
-        end: 29925,
-        pattern_start: 29850,
-        pattern_end: 29858
+        start: 36480,
+        end: 36566,
+        pattern_start: 36491,
+        pattern_end: 36499
       }
     )
   }

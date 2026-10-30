@@ -72,13 +72,22 @@ pub type Agent {
 
 /// One agent card, judged by the reader's state enum. `last_reply` is the newest
 /// answer entry the registry knows — `None` renders as `—`, never `0`.
+///
+/// `kind` is what the card IS (`"main"`, `"project"`, `"subagent"`), so one list
+/// of cards and one enum cover the fleet: the PROJECTS view is the same list
+/// filtered by kind. The last four fields are project-only and `None` elsewhere.
 pub type AgentCard {
   AgentCard(
+    kind: String,
     name: String,
     state: String,
     branch: String,
     worktree: String,
     last_reply: Option(Int),
+    room: Option(String),
+    cwd: Option(String),
+    summary: Option(String),
+    entries: Option(Int),
   )
 }
 
@@ -91,6 +100,8 @@ pub type Orphan {
 /// counter that replaced the old "tasks running" line.
 pub type Agents {
   Agents(
+    /// Always "main" in practice; carried so the dashboard can print it.
+    spike_kind: String,
     spike_state: String,
     named: List(AgentCard),
     orphans: List(Orphan),
@@ -394,6 +405,7 @@ pub fn work_line(agents: Agents) -> String {
 /// `work: — in flight · — queued` when there are no agents yet.
 pub fn empty_agents() -> Agents {
   Agents(
+    spike_kind: "main",
     spike_state: "unknown",
     named: [],
     orphans: [],
@@ -485,6 +497,7 @@ pub type Tab {
   Dashboard
   LogsTab
   BrowserTab
+  ProjectsTab
 }
 
 /// The direction filter: a steer arriving, an answer leaving, or both.
@@ -537,6 +550,7 @@ pub fn tab_label(tab: Tab) -> String {
     Dashboard -> "dashboard"
     LogsTab -> "logs"
     BrowserTab -> "browser"
+    ProjectsTab -> "projects"
   }
 }
 
@@ -894,4 +908,68 @@ pub fn logs_path_for(
 /// every space, and the chips belong to the stream, not to the jump list.
 pub fn search_path(query: String, limit: Int) -> String {
   "/api/search?limit=" <> int.to_string(limit) <> "&q=" <> url_encode(string.trim(query))
+}
+
+// --- the projects view -----------------------------------------------------
+
+/// The cards that are projects: the AGENTS list, filtered by kind.
+pub fn project_cards(agents: Agents) -> List(AgentCard) {
+  list.filter(agents.named, fn(card) { card.kind == "project" })
+}
+
+/// The subagent cards, same list, the other side of the filter.
+pub fn subagent_cards(agents: Agents) -> List(AgentCard) {
+  list.filter(agents.named, fn(card) { card.kind != "project" })
+}
+
+/// `!ig3PmgqC-rUdJMNvo6sfPHRtUlIMaeU8XqidpXpufmU` → `!ig3PmgqC-r…XpufmU`.
+/// A short id (`!short:jacks.im`) is already readable, so it comes back whole.
+pub fn room_short(room: String) -> String {
+  case string.length(room) > 20 {
+    False -> room
+    True ->
+      string.slice(room, 0, 11)
+      <> "…"
+      <> string.slice(room, string.length(room) - 6, string.length(room))
+  }
+}
+
+/// `app — room !ig3PmgqC-r…XpufmU — 12 entries`: what the projects pane prints
+/// above a card's directory. Unknowns say so instead of printing `None`.
+pub fn project_line(card: AgentCard) -> String {
+  let room = case card.room {
+    Some(room) -> room_short(room)
+    None -> "no room"
+  }
+  card.name
+  <> " — room "
+  <> room
+  <> " — "
+  <> format_count(card.entries)
+  <> " entries"
+}
+
+/// The directory a project works in, or a plain statement that nothing said.
+pub fn project_dir(card: AgentCard) -> String {
+  case card.cwd {
+    Some(cwd) -> cwd
+    None -> "no directory"
+  }
+}
+
+/// The one-line summary from `AGENTS.md`, or a nudge to write one.
+pub fn project_summary(card: AgentCard) -> String {
+  case card.summary {
+    Some(summary) if summary != "" -> summary
+    _ -> "no AGENTS.md summary yet"
+  }
+}
+
+/// `2 projects` / `no projects yet`, the pane's heading line.
+pub fn project_count_line(cards: List(AgentCard)) -> String {
+  case cards {
+    [] -> "no projects yet — bind one with /project new <name> in a room"
+    [_] -> "1 project"
+    _ -> int.to_string(list.length(cards)) <> " projects"
+  }
 }

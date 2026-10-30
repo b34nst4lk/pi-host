@@ -755,13 +755,15 @@ export function update(current, msg) {
       _block = $effect.none();
     } else if (tab instanceof $model.LogsTab) {
       _block = reload(next);
-    } else {
+    } else if (tab instanceof $model.BrowserTab) {
       _block = $effect.batch(
         listPrepend(
           load_conversations(next.mode),
           listPrepend(load_browser(next), $List$Empty$const),
         ),
       );
+    } else {
+      _block = $effect.none();
     }
     let load = _block;
     return [next, load];

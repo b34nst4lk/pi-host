@@ -88,7 +88,10 @@ pub fn update(current: model.Model, msg: model.Msg) -> #(model.Model, effect.Eff
         // The rail first: its arrival picks the main conversation and asks for
         // that stream, so the tab never opens on an empty pane.
         model.BrowserTab -> effect.batch([load_conversations(next.mode), load_browser(next)])
+        // The PROJECTS pane renders from the agent cards the dashboard poll already
+        // carries, so opening it needs no request of its own.
         model.Dashboard -> effect.none()
+        model.ProjectsTab -> effect.none()
       }
       #(next, load)
     }

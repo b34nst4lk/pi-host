@@ -94,16 +94,30 @@ ledger. One request, one snapshot, `200` even when parts failed.
   },
   "agents": {
     "ok": true, "error": null,
-    "spike": { "state": "working", "conversation": 1 },
+    "spike": { "kind": "main", "state": "working", "conversation": 1 },
     "named": [
       {
+        "kind": "subagent",
         "name": "reader",
         "state": "working",
         "branch": "worktree-reader",
         "worktree": "/opt/pi-host/workspace/worktrees/reader",
         "last_reply": 2393,
         "conversation": 2166,
-        "anchor": 2165
+        "anchor": 2165,
+        "room": null, "cwd": null, "summary": null, "entries": null
+      },
+      {
+        "kind": "project",
+        "name": "the-wall",
+        "state": "working",
+        "branch": "", "worktree": null, "last_reply": null,
+        "conversation": 3100,
+        "anchor": 3099,
+        "room": "!ig3PmgqC-rUdJMNvo6sfPHRtUlIMaeU8XqidpXpufmU",
+        "cwd": "/work/projects/the-wall",
+        "summary": "the wall: a read-only window on the ledger",
+        "entries": 1832
       }
     ],
     "orphans": [ { "anchor": 2899, "conversation": 2900 } ],
@@ -174,12 +188,40 @@ testable without a database:
   `unknown`, not `alive`.
 - `orphans[]` — held anchors with no registry entry: the anchor **task** id (not a
   conversation) plus the conversation it owns, when that can be derived.
-- `retired` — `count(*)` of `subagent-anchor` tasks with status `terminal`.
+- `retired` — `count(*)` of anchor tasks (`subagent-anchor` **and** `project-anchor`)
+  with status `terminal`.
 - `work` — `in_flight` counts in-flight run tasks in the **main** conversation
   (anchors and reporters are not work); `queued` is the main conversation's replayed
   `pi.inbox.items` length. `null` when the ledger or the document is unreadable.
 - Every document read here is `base` + `delta` replay, scoped by
   `scope_kind = 'conversation'`, `owner_id = <conversation>`.
+
+### `kind` and the projects (round 5, additive in v1)
+
+A **project** is a Matrix room bound to its own persistent conversation: the daemon
+keeps a `project-anchor` task holding it, and `app.projects` maps the name to the
+pointers. The wall does not read `AGENTS.md` — the registry carries a summary and
+the file stays the daemon's business — so a project card can be stale about
+wording, never wrong about a state.
+
+- `kind` — `"main"` (the spike card), `"project"`, or `"subagent"`. **One list**:
+  the PROJECTS view is `named` filtered by `kind == "project"`, so the two views
+  cannot disagree about a state. A card with no `kind` (an older reader) is a
+  `subagent`; a `null` `branch`/`worktree` is a default, not a decode failure.
+- `room`, `cwd`, `summary`, `entries` — project-only, `null` everywhere else.
+  `room` is the room id as recorded, `cwd` the bound directory, `summary` the
+  bind-time first line of its `AGENTS.md`, `entries` a `count(*)` over that
+  conversation (`null` when the conversation is unknown). The wall renders the
+  room in short form (`!ig3PmgqC-r…XpufmU`), the directory whole, and `—` for any
+  `null`.
+- A project's anchor is matched **by conversation only** — every project anchor is
+  named `project-anchor`, so a name match would tag every project alike. A terminal
+  anchor makes the project `retired`, and it stays a card: a retired project is
+  still worth seeing. A project anchor is never an orphan.
+- `app.projects` is read like `app.subagents`: latest non-retired document,
+  `base` + `delta` replay, `{ projects: { <name>: { room, conversation, cwd,
+  instructions_path, summary, created } } }`. No document, or an unreadable one →
+  no project cards and `ok: true` (the rest of the fleet still renders).
 
 ## GET /api/spend
 
@@ -423,11 +465,16 @@ sample is only appended when the corresponding value is non-`null`.
 | **QUEUE** | the same `work:` line in place of the old `tasks running` counter; inbox depth, tasks pending, unanswered, up to 10 recent errors |
 | **LOGS** (tab) | full-width ledger browser: newest first, live-tailed by the same 10 s poll; direction chips (`all` / `in` = `pi.user`, `out` = `pi.assistant` + `app.*`), one chip per kind (chips and direction intersect), a search box (`q=`), an `older` button that walks `before=`; each row is a `<details>`: human line, then the raw record as `<pre>`, then — when the entry has one — a `full output` expander that fetches `/api/spill` |
 | **BROWSER** (tab) | round 4: conversation-first navigation. A search box on top (`Enter` → `/api/search`, hits listed underneath with the space they live in, a date and the matched line; clicking one switches the pane and lands on a window around it, marked row). Left rail: one card per space (`title`, state badge, entry count, `first → last`), main pinned first, children by id, refreshed by the same 10 s poll. Main pane: the selected space's stream, rendered by the **same row renderer as LOGS**, with `pi.compaction` entries drawn as full-width dividers (`— summarized history begins —` / `— continues —`, summary text one click away) instead of rows. A window around a hit turns the tail off until `back to the tail` |
+| **PROJECTS** (tab) | round 5: one row per bound project — name, state badge, the room that steers it in short form (`!ig3PmgqC-r…XpufmU`), the directory it works in, and `N entries` of its conversation, with the first line of its `AGENTS.md` underneath (`no AGENTS.md summary yet` when the file has none). The rows are the AGENTS cards filtered by `kind == "project"`, so the pane needs no request of its own: it renders from the 10 s poll. Empty pane teaches the command (`/project new <name>`). The AGENTS card on the dashboard keeps listing subagents only, with a `N project(s) — see the PROJECTS tab` line |
 
 ## Versioning
 
 `v` increments only for a breaking change; additive fields do not bump it. The UI
-ignores unknown fields and renders `—` for `null`. Round 4 added two endpoints
+ignores unknown fields and renders `—` for `null`. Round 5 added `agents.spike.kind`,
+`agents.named[].kind` and the four project fields (`room`, `cwd`, `summary`,
+`entries`), all additive and all decoded tolerantly: a missing `kind` is
+`"subagent"`, a `null` `branch`/`worktree` is the empty string, and a `null`
+project field renders `—`. Round 4 added two endpoints
 (`/api/conversations`, `/api/search`), two `/api/logs` parameters (`conversation`,
 `around`) and one UI tab, without changing any existing shape. Its three new shapes
 decode **tolerantly**: a wrong-typed or missing field on one conversation or one hit

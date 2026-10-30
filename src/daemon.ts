@@ -4,18 +4,29 @@
 // ONE process owns the durable storage and the Matrix connection — the
 // harness contract is "one process owns a storage at a time" — so this daemon
 // is both. It:
-//   - long-polls /sync on one configured room (no SDK, raw CS API, the same
+//   - long-polls /sync once for ALL joined rooms (no SDK, raw CS API, the same
 //     architecture as Hermes's Python matrix adapter),
+//   - routes by room (src/rooms.ts): a room bound to a project steers that
+//     project's own persistent conversation, the configured room steers
+//     pi-spike, and every other joined room steers nothing (the bot idles in
+//     household rooms as a plain user) — except `/project`, which is typed in the
+//     room it is meant to bind,
 //   - maps messages into durable submissions (core/steer.ts: plain text =
 //     follow-up, /steer joins the live run, /note appends silently),
+//   - scaffolds and binds projects (src/projects.ts): `/project new` makes a
+//     directory (mkdir + git init + starter AGENTS.md), `/project bind` adopts an
+//     existing one, `/project list` shows the registry. A project's instructions
+//     are its own AGENTS.md, re-read on EVERY request, never a copy in the registry,
 //   - emotes 👀 on every accepted message as soon as it is read, so the room sees
 //     receipt while the model is still working,
-//   - threads every reply onto the message being answered (m.in_reply_to),
-//   - /stop aborts the conversation's ordinary work; /status reports queue state,
+//   - threads every reply onto the message being answered (m.in_reply_to), in the
+//     room that message came from,
+//   - /stop aborts the conversation the room steers; /status reports its queue,
 //   - /usage, /balance, /models and /embed answer from the Ollama APIs (account
 //     spend, credit, the public model catalogue, and local embeddings) — one
 //     upstream call per command, threaded replies, failures reported not fatal,
-//   - pumps assistant messages from the watched transcript back into the room,
+//   - pumps each WATCHED conversation's assistant messages into the room bound to
+//     it: one pump per conversation, one cursor per conversation,
 //   - keeps a durable per-conversation cursor doc so a crash between "answer
 //     committed" and "reply sent" replays the reply (at least once) on boot,
 //     and never replays anything the cursor already covered.
@@ -31,6 +42,9 @@
 //   MATRIX_ALLOWED_USERS     required for anything to happen: comma list of
 //                            @user:server allowed to steer. Unset = deaf
 //                            (fail-safe; every non-allowed sender logged once).
+//   PROJECTS_DIR             default <PI_HOST_SANDBOX>/../projects — where
+//                            `/project new` puts a project whose message carried
+//                            no path (a relative path resolves against it too)
 //   OLLAMA_API_KEY           required
 //   OLLAMA_MODEL             default deepseek-v4.1-flash
 //   OLLAMA_BASE_URL          default https://ollama.com/v1
@@ -51,23 +65,28 @@
 //                            the spike's STEER_DB; durable ledger of the host)
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createModels } from "@earendil-works/pi-ai/models";
-import { defineDoc, Harness, InboxDoc, type Submission } from "@earendil-works/pi-durable";
+import { defineDoc, Harness, InboxDoc, type ConversationId, type Submission } from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import { appendFileSync, mkdirSync } from "node:fs";
 import { createAgentEnv } from "./env.ts";
 import {
 	ACK_REACTION,
 	classifySyncBatch,
 	createReplyPump,
-	forRoom,
-	pickNewEvents,
-	parseMatrixCommand,
+	roomShort,
 	submitMatrixCommand,
 	type EventId,
 	type MatrixCommand,
-	type TextEvent,
 } from "./core/steer.ts";
+import { createRoomRouter, OLLAMA_ACTIONS } from "./rooms.ts";
+import {
+	createProjects,
+	EMPTY_PROJECTS,
+	ProjectsDoc,
+	type ProjectOutcome,
+	type ProjectsApi,
+} from "./projects.ts";
 import { createMatrixClient } from "./surfaces/matrix-client.ts";
 import { createOllamaApi, NoEmbeddingModelError } from "./ollama_api.ts";
 import { envGit, createSubagents } from "./subagents.ts";
@@ -116,6 +135,9 @@ const env = {
 	maxTokens: Number(process.env.OLLAMA_MAX_TOKENS ?? 16384),
 	db: process.env.PI_HOST_DB ?? "./storage/session.sqlite",
 	sandbox: process.env.PI_HOST_SANDBOX ?? "./workspace",
+	// Where `/project new` puts a project that names no path. Sibling of the
+	// sandbox, so a project is never inside the umbrella it spawns from.
+	projectsDir: process.env.PROJECTS_DIR ?? resolve(process.env.PI_HOST_SANDBOX ?? "./workspace", "..", "projects"),
 };
 const missing: string[] = [];
 if (!env.accessToken) missing.push("MATRIX_ACCESS_TOKEN");
@@ -126,7 +148,7 @@ if (missing.length > 0) {
 	console.error(`PREFLIGHT FAIL — missing env: ${missing.join(", ")}`);
 	process.exit(2);
 }
-for (const requiredDir of [dirname(env.db), env.sandbox]) mkdirSync(requiredDir, { recursive: true });
+for (const requiredDir of [dirname(env.db), env.sandbox, env.projectsDir]) mkdirSync(requiredDir, { recursive: true });
 
 // --- durable side ---
 const models = createModels();
@@ -148,8 +170,15 @@ models.setProvider(
 );
 // --- Matrix surface (needed by the subagent host before the registry) ---
 const client = createMatrixClient({ homeserver: env.homeserver, accessToken: env.accessToken });
-/** The newest accepted inbound message; replies thread onto it (read at send time). */
-let lastInbound: EventId | null = null;
+/**
+ * The newest accepted inbound message PER ROOM: a reply threads onto the message
+ * it answers, and each room has its own. Read at send time, so a message that
+ * lands while the model is thinking still steers the thread. Multi-room since
+ * round 5 — a project's answers must quote the project's room, never the main one.
+ */
+const lastInbound = new Map<string, EventId>();
+/** The event a reply in `room` should quote, or `null` before any. */
+const replyTargetFor = (room: string): EventId | null => lastInbound.get(room) ?? null;
 
 /** The subagent runtime: named persistent children in their own worktrees. */
 const subagents = createSubagents({
@@ -159,7 +188,8 @@ const subagents = createSubagents({
 	git: (args, cwd, execEnv, contextArg) => envGit(args, cwd, execEnv, contextArg),
 	roomPost: async (text: string) => {
 		try {
-			return await client.sendText(env.room, text, lastInbound);
+			// Reports thread in the MAIN room: a subagent is the main agent's child.
+			return await client.sendText(env.room, text, replyTargetFor(env.room));
 		} catch (error) {
 			// subagents.ts reports the failure to the reporter task too; the journal is
 			// what survives when nobody is watching the room.
@@ -169,7 +199,21 @@ const subagents = createSubagents({
 	},
 	log: (message: string) => log(`[subagent] ${message}`),
 });
-const registry = createSteerRegistry(subagents);
+/**
+ * The project system: rooms bound to persistent child conversations. Created
+ * before the registry because a project agent must not select the subagent tool
+ * (`hideExtensions`) — a project is a space, not a spawner.
+ */
+const projects = createProjects({
+	provider: "ollama-cloud",
+	model: env.ollamaModel,
+	projectsDir: env.projectsDir,
+	git: (args, cwd, execEnv, contextArg) => envGit(args, cwd, execEnv, contextArg),
+	hideExtensions: [subagents.tools],
+	env: (cwd) => createAgentEnv({ cwd }, env.sandbox),
+	log: (message: string) => log(`[project] ${message}`),
+});
+const registry = createSteerRegistry(subagents, projects.extension);
 
 /** Durable replay cursor for the reply pump: entry ids already sent to the room. Kept capped. */
 const SteerCursor = defineDoc<{ ids: Array<string | number> }>({
@@ -248,34 +292,45 @@ function allowed(sender: string): boolean {
 }
 
 const seenEvents = new Set<string>();
-/** Submission ids still being awaited, for the /status line. */
-const pending = new Set<string | number>();
+/** Submission ids still being awaited, PER CONVERSATION, for the /status line. */
+const pending = new Map<ConversationId, Set<string | number>>();
 /**
  * pi-spike is a normal user of the wider setup and can be invited anywhere;
- * only the configured room steers. `joined` is the homeserver-resolved room id
- * (join returns it even for an #alias); env.room covers the literal form.
+ * only the configured room steers it. `joined` is the homeserver-resolved room id
+ * (join returns it even for an #alias); env.room covers the literal form. Bound
+ * project rooms are added to the route table by the registry, not this set.
  */
-const steeringRooms = new Set<string>([env.room]);
-if (joined !== undefined) steeringRooms.add(joined);
+const mainRooms = new Set<string>([env.room]);
+if (joined !== undefined) mainRooms.add(joined);
 
-function track(submission: Submission): void {
-	pending.add(submission.id);
+function pendingSet(conversation: ConversationId): Set<string | number> {
+	let set = pending.get(conversation);
+	if (set === undefined) {
+		set = new Set<string | number>();
+		pending.set(conversation, set);
+	}
+	return set;
+}
+
+function track(conversation: ConversationId, submission: Submission): void {
+	const set = pendingSet(conversation);
+	set.add(submission.id);
 	void submission
 		.wait(context)
 		.catch((error: unknown) => log(`submission ${submission.id} wait ended: ${error instanceof Error ? error.message : error}`))
-		.finally(() => pending.delete(submission.id));
+		.finally(() => set.delete(submission.id));
 }
 
-/** Send one threaded control reply. A failed send is logged, never fatal. */
-async function reply(text: string, replyTo: EventId): Promise<void> {
+const pendingCount = (conversation: ConversationId): number => pending.get(conversation)?.size ?? 0;
+
+/** Send one threaded control reply into `room`. A failed send is logged, never fatal. */
+async function reply(room: string, text: string, replyTo: EventId): Promise<void> {
 	try {
-		await client.sendText(env.room, text, replyTo);
+		await client.sendText(room, text, replyTo);
 	} catch (error) {
 		log(`control reply failed: ${error instanceof Error ? error.message : error}`);
 	}
 }
-
-const OLLAMA_ACTIONS = new Set(["usage", "usage-invalid", "balance", "models", "embed"]);
 
 /**
  * Answer one Ollama query command. Exactly one upstream call per command —
@@ -284,107 +339,147 @@ const OLLAMA_ACTIONS = new Set(["usage", "usage-invalid", "balance", "models", "
  * (core/ollama-format.ts). A local server without an embedding model is a state
  * to report plainly, not an API failure, so it answers without the ❌.
  */
-async function answerOllamaCommand(command: MatrixCommand, replyTo: EventId): Promise<void> {
+async function answerOllamaCommand(command: MatrixCommand, replyTo: EventId, room: string): Promise<void> {
 	if (command.action === "usage-invalid") {
-		await reply(`unknown /usage argument "${command.text}" — /usage [${USAGE_RANGES.join("|")}] [models]`, replyTo);
+		await reply(room, `unknown /usage argument "${command.text}" — /usage [${USAGE_RANGES.join("|")}] [models]`, replyTo);
 		return;
 	}
 	try {
 		switch (command.action) {
 			case "usage":
-				await reply(formatUsage(await ollamaApi.usage(command.range, command.groupByModel)).join("\n"), replyTo);
+				await reply(room, formatUsage(await ollamaApi.usage(command.range, command.groupByModel)).join("\n"), replyTo);
 				return;
 			case "balance":
-				await reply(formatBalance(await ollamaApi.balance()), replyTo);
+				await reply(room, formatBalance(await ollamaApi.balance()), replyTo);
 				return;
 			case "models":
-				await reply(formatModels(await ollamaApi.tags()).join("\n"), replyTo);
+				await reply(room, formatModels(await ollamaApi.tags()).join("\n"), replyTo);
 				return;
 			case "embed":
-				await reply(formatEmbed(await ollamaApi.embed(command.content), 1), replyTo);
+				await reply(room, formatEmbed(await ollamaApi.embed(command.content), 1), replyTo);
 				return;
 			default:
 				return;
 		}
 	} catch (error) {
 		if (error instanceof NoEmbeddingModelError) {
-			await reply(error.message, replyTo);
+			await reply(room, error.message, replyTo);
 			return;
 		}
 		const message = error instanceof Error ? error.message : String(error);
 		log(`${command.action} failed: ${message}`);
-		await reply(`❌ ${message}`, replyTo);
+		await reply(room, `❌ ${message}`, replyTo);
 	}
 }
 
-async function handleEvent(event: TextEvent): Promise<void> {
-	if (!forRoom(event, steeringRooms)) return; // other rooms: silently ignore (bot idles there as a plain user)
-	const { fresh } = pickNewEvents(seenEvents, [event]);
-	for (const freshEvent of fresh) {
-		if (!allowed(freshEvent.sender)) continue;
-		lastInbound = freshEvent.id;
-		// Receipt first: the 👀 lands while the model is still thinking. A failed
-		// reaction must never cost us the message, so it is logged and dropped;
-		// the reaction is idempotent per (event, key, sender) on the homeserver.
-		try {
-			await client.sendReaction(env.room, freshEvent.id, ACK_REACTION);
-		} catch (error) {
-			log(`ack reaction failed (message still steers): ${error instanceof Error ? error.message : error}`);
-		}
-		const command = parseMatrixCommand(freshEvent.text);
-		if (command === null) continue;
-		if (command.action === "stop") {
-			await root.abort(context); // withdraws queued inputs and marks live tasks; background work is left alone
-			try {
-				await client.sendText(env.room, `stopped (queued withdrawn; pending before stop: ${pending.size})`, freshEvent.id);
-			} catch (error) {
-				log(`sendText after /stop failed: ${error instanceof Error ? error.message : error}`);
-			}
-			continue;
-		}
-		if (command.action === "status") {
-			const inbox = await harness.snapshot(InboxDoc, root.id, context);
-			try {
-				await client.sendText(env.room, `status: ${pending.size} settled-or-running, inbox ${inbox?.items.length ?? 0} queued`, freshEvent.id);
-			} catch (error) {
-				log(`sendText after /status failed: ${error instanceof Error ? error.message : error}`);
-			}
-			continue;
-		}
-		if (OLLAMA_ACTIONS.has(command.action)) {
-			// Not awaited: an upstream timeout must not stall the sync loop. The
-			// helper never throws, it replies (threaded) whatever happens.
-			void answerOllamaCommand(command, freshEvent.id);
-			continue;
-		}
-		const submission = await submitMatrixCommand(root, command, context);
-		track(submission);
-	}
-}
-
-// --- reply pump: transcript → room, state entirely in the durable cursor ---
-// createReplyPump advances the cursor only for entries it actually delivered; a
+// --- reply pumps: one per WATCHED conversation, one durable cursor each ---
+// createReplyPump advances its cursor only for entries it actually delivered; a
 // failed send leaves its entry outside the cursor and is retried by the next
-// watch tick or at the next boot (at-least-once; the cursor doc is the whole state).
-const pump = createReplyPump({
-	sendText: (text, replyTo) => client.sendText(env.room, text, replyTo),
-	replyTarget: () => lastInbound,
-	loadCursor: async () => new Set((await harness.snapshot(SteerCursor, root.id, context))?.ids ?? []),
-	saveCursor: async (ids) => {
-		await root.commit(async (tx) => {
-			(await tx.doc(SteerCursor, root.id)).ids = [...ids].slice(-CURSOR_CAP);
-		}, context);
+// watch tick or at the next boot (at-least-once; the cursor doc is the whole
+// state). Watching is per conversation, so the set is built at boot and grown by
+// every successful bind — a project's answers have one room, and one pump.
+const pumping = new Map<ConversationId, { stop(): Promise<unknown> }>();
+
+/** The live handle of one conversation: the root is already open. */
+async function conversationHandle(id: ConversationId) {
+	return id === root.id ? root : harness.conversation(id, context);
+}
+
+/** Start (once) the pump that carries `conversation`'s answers into `room`. */
+async function ensurePump(conversation: ConversationId, room: string): Promise<void> {
+	if (pumping.has(conversation)) return;
+	const handle = await conversationHandle(conversation);
+	if (handle === undefined) {
+		journal(`pump skipped: conversation ${conversation} has no handle`);
+		return;
+	}
+	const pump = createReplyPump({
+		sendText: (text, replyTo) => client.sendText(room, text, replyTo),
+		replyTarget: () => replyTargetFor(room),
+		loadCursor: async () => new Set((await harness.snapshot(SteerCursor, conversation, context))?.ids ?? []),
+		saveCursor: async (ids) => {
+			await handle.commit(async (tx) => {
+				(await tx.doc(SteerCursor, conversation)).ids = [...ids].slice(-CURSOR_CAP);
+			}, context);
+		},
+		log: (message) => {
+			log(message);
+			// The reply pump only logs undelivered answers: a transport failure, kept.
+			journal(message);
+		},
+	});
+	const watch = await handle.watch(context);
+	watch.start(async (value) => {
+		await pump(value.entries);
+	});
+	pumping.set(conversation, watch);
+	log(`reply pump: conversation ${conversation} → room ${roomShort(room)}`);
+	journal(`reply pump on conversation ${conversation} → ${room}`);
+}
+
+// --- projects: the registry, the commands, and the route table ---
+const projectApi: ProjectsApi = {
+	main: root.id,
+	commit: (body) => root.commit(body, context),
+	projects: async () => (await harness.snapshot(ProjectsDoc, root.id, context)) ?? EMPTY_PROJECTS,
+};
+
+/** The reply line for one bind. A bound conversation starts pumping right here. */
+async function afterBind(outcome: ProjectOutcome): Promise<string> {
+	if (!outcome.ok) return `❌ ${outcome.error}`;
+	await ensurePump(outcome.conversation, outcome.room);
+	return (
+		`${outcome.created ? "created and bound" : "bound"} room ${roomShort(outcome.room)} → project ${outcome.name}, ` +
+		`conversation ${outcome.conversation}, cwd ${outcome.cwd}${outcome.note}. ` +
+		"Say something in this room to steer it."
+	);
+}
+
+const router = createRoomRouter({
+	client,
+	mainRooms,
+	mainConversation: root.id,
+	registry: () => projectApi.projects(),
+	allowed,
+	submit: async (conversation, command) => {
+		const handle = await conversationHandle(conversation);
+		if (handle === undefined) throw new Error(`conversation ${conversation} has no handle`);
+		track(conversation, await submitMatrixCommand(handle, command, context));
 	},
-	log: (message) => {
-		log(message);
-		// The reply pump only logs undelivered answers: a transport failure, kept.
-		journal(message);
+	abort: async (conversation) => {
+		const handle = await conversationHandle(conversation);
+		if (handle === undefined) return `conversation ${conversation} has no handle`;
+		// Withdraws queued inputs and marks live tasks; background work (subagent
+		// anchors, project anchors) is left alone by the harness contract.
+		await handle.abort(context);
+		return `stopped (queued withdrawn; pending before stop: ${pendingCount(conversation)})`;
 	},
+	status: async (conversation) => {
+		const inbox = await harness.snapshot(InboxDoc, conversation, context);
+		return `status: ${pendingCount(conversation)} settled-or-running, inbox ${inbox?.items.length ?? 0} queued`;
+	},
+	ollama: (command, replyTo, room) => {
+		// Not awaited: an upstream timeout must not stall the sync loop. The helper
+		// never throws, it replies (threaded) whatever happens.
+		void answerOllamaCommand(command, replyTo, room);
+	},
+	project: {
+		create: async (name, path, room) => afterBind(await projects.create(name, path, room, projectApi)),
+		bind: async (name, path, room) => afterBind(await projects.bind(name, path, room, projectApi)),
+		list: () => projects.list(projectApi),
+	},
+	seen: seenEvents,
+	lastInbound,
+	log: (line) => log(line),
 });
-const watch = await root.watch(context);
-watch.start(async (value) => {
-	await pump(value.entries);
-});
+
+// Boot: the main room's conversation always pumps; every already-bound project
+// starts pumping again (its cursor doc makes the restart a replay, not a repeat).
+await ensurePump(root.id, joined ?? env.room);
+for (const [name, record] of Object.entries((await projectApi.projects()).projects)) {
+	log(`project ${name}: room ${roomShort(record.room)} → conversation ${record.conversation} (cwd ${record.cwd})`);
+	await ensurePump(record.conversation, record.room);
+}
 
 // --- sync loop ---
 let durableSync: { batch: string | null; seen: string[] } =
@@ -396,7 +491,7 @@ process.on("SIGINT", () => controller.abort());
 process.on("SIGTERM", () => controller.abort());
 process.on("unhandledRejection", (reason) => log(`unhandledRejection (daemon stays up): ${reason}`));
 
-log(`syncing ${env.room} on ${env.homeserver}; ctrl-c to stop`);
+log(`syncing ${env.room} (and every bound project room) on ${env.homeserver}; ctrl-c to stop`);
 try {
 	while (!controller.signal.aborted) {
 		try {
@@ -408,7 +503,9 @@ try {
 					log(`first boot: skipping ${batch.textEvents.length} backlog events (only messages sent after the daemon starts steer it)`);
 				}
 			} else {
-				for (const event of classification.fresh) await handleEvent(event);
+				// One router, every room: it decides from the registry which room steers
+				// what and drops the rest without a word.
+				for (const event of classification.fresh) await router.handleEvent(event);
 			}
 			// every batch event counts as seen by this process, skipped backlog included
 			for (const event of batch.textEvents) seenEvents.add(event.id);

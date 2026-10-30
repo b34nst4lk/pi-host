@@ -251,6 +251,22 @@
       .pane-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
       .pane-title { margin: 0; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; }
       @media (max-width: 760px) { .browser-body { grid-template-columns: 1fr; } }
+      /* --- the PROJECTS view ------------------------------------------- */
+      /* A project is a room bound to a conversation: one block per project,
+         name and state on one line, then the room, the directory, and the
+         first line of its AGENTS.md. The directory wraps; it is a real path. */
+      .projects { align-content: start; }
+      .project-list { display: grid; gap: 12px; }
+      .project { border-top: 1px solid var(--line); padding-top: 8px; }
+      .project:first-child { border-top: none; padding-top: 0; }
+      .project-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+      .project-head .badge { margin-top: 0; }
+      .project-name { color: var(--accent); font-weight: 600; }
+      .project-line, .project-dir, .project-summary { font-size: 11px; }
+      .project-line { color: var(--dim); font-variant-numeric: tabular-nums; }
+      .project-dir { color: var(--dim); overflow-wrap: anywhere; }
+      .project-summary { color: var(--ink); }
+      .agent-projects { margin: 10px 0 0; padding-top: 8px; border-top: 1px solid var(--line); font-size: 11px; color: var(--dim); }
       .foot { margin-top: 20px; color: var(--dim); font-size: 11px; }
     </style>
   </head>

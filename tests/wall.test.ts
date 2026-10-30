@@ -634,13 +634,77 @@ function agentsFixture(): Fixture {
 	return { dbPath, logPath };
 }
 
+/** The same ledger plus `app.projects`: two bound projects, one alive, one idle. */
+function projectsFixture(): Fixture {
+	const fixture = agentsFixture();
+	const db = new DatabaseSync(fixture.dbPath);
+	db.exec("CREATE TABLE IF NOT EXISTS conversations (id INTEGER PRIMARY KEY, owner_conversation_id INTEGER, owner_task_id INTEGER, record TEXT)");
+	const task = (id: number, conversation: number, kind: string, status: string, record: unknown = {}) => {
+		db.prepare("INSERT INTO tasks (id, conversation_id, kind, status, abort_requested, background, record) VALUES (?, ?, ?, ?, 0, 1, ?)").run(
+			id,
+			conversation,
+			quoted(kind),
+			status,
+			JSON.stringify(record),
+		);
+	};
+	const conversation = (id: number, ownerTask: number) => {
+		db.prepare("INSERT INTO conversations (id, owner_conversation_id, owner_task_id, record) VALUES (?, 1, ?, '{}')").run(id, ownerTask);
+	};
+	const entry = (id: number, conversationId: number, kind: string, record: unknown) => {
+		db.prepare("INSERT INTO entries (id, conversation_id, head, commit_seq, record) VALUES (?, ?, NULL, 1, ?)").run(
+			id,
+			conversationId,
+			JSON.stringify(record),
+		);
+	};
+
+	// app (3100): a project anchor holding, two entries of history, one generation.
+	task(3099, 1, "project-anchor", "running", { input: { name: "project-anchor" }, state: { checkpoint: { phase: "hold" } } });
+	conversation(3100, 3099);
+	task(50, 3100, "pi.generation", "running");
+	entry(3101, 3100, "pi.user", { kind: "pi.user", model: [{ role: "user", content: "fix it", timestamp: "2026-01-01T00:00:00.000Z" }] });
+	entry(3102, 3100, "pi.assistant", { kind: "pi.assistant", model: [{ role: "assistant", content: [{ type: "text", text: "done" }] }] });
+	writeDocumentFor(db, 51, "pi.inbox", 3100, { items: [] }, []);
+
+	// docs (3200): a project with a terminal anchor — the project was retired.
+	task(3199, 1, "project-anchor", "terminal", { input: { name: "project-anchor" } });
+	conversation(3200, 3199);
+
+	writeDocument(db, 52, "app.projects", {
+		projects: {
+			app: {
+				room: "!ig3PmgqC-rUdJMNvo6sfPHRtUlIMaeU8XqidpXpufmU",
+				conversation: 3100,
+				cwd: "/work/projects/app",
+				instructions_path: "/work/projects/app/AGENTS.md",
+				summary: "the wall",
+				created: "2026-01-01T00:00:00.000Z",
+			},
+			docs: {
+				room: "!docs:jacks.im",
+				conversation: 3200,
+				cwd: "/work/projects/docs",
+				instructions_path: "/work/projects/docs/AGENTS.md",
+				summary: "",
+				created: "2026-01-02T00:00:00.000Z",
+			},
+		},
+	}, []);
+	db.close();
+	return fixture;
+}
+
 describe("agents report", () => {
 	it("derives every state from the ledger, in precedence order", () => {
 		const { dbPath, logPath } = agentsFixture();
 		const agents = createLedger({ dbPath, logPath }).state().agents;
 
 		expect(agents.ok).toBe(true);
-		expect(agents.spike).toEqual({ state: "working", conversation: 1 });
+		expect(agents.spike).toEqual({ kind: "main", state: "working", conversation: 1 });
+		// One list, three kinds: the PROJECTS view is this list filtered.
+		expect(agents.named.every((card) => card.kind === "subagent")).toBe(true);
+		expect(agents.named.every((card) => card.room === null && card.cwd === null)).toBe(true);
 		const byName = Object.fromEntries(agents.named.map((card) => [card.name, card]));
 		expect(byName.reader).toMatchObject({ state: "working", conversation: 2166, anchor: 2165, last_reply: 2393 });
 		expect(byName["wall-ui"]).toMatchObject({ state: "reporting", conversation: 2402, anchor: 2401 });
@@ -690,6 +754,61 @@ describe("agents report", () => {
 		expect(agents.spike.state).toBe("unknown");
 		expect(agents.work).toEqual({ in_flight: null, queued: null });
 		expect(agents.retired).toBeNull();
+	});
+
+	it("gives a project a card of its own kind, with its room, cwd and entry count", () => {
+		const { dbPath, logPath } = projectsFixture();
+		const agents = createLedger({ dbPath, logPath }).state().agents;
+		const projects = agents.named.filter((card) => card.kind === "project");
+		expect(projects.map((card) => card.name)).toEqual(["app", "docs"]);
+
+		const app = projects.find((card) => card.name === "app")!;
+		expect(app.state).toBe("working");
+		expect(app.room).toBe("!ig3PmgqC-rUdJMNvo6sfPHRtUlIMaeU8XqidpXpufmU");
+		expect(app.cwd).toBe("/work/projects/app");
+		expect(app.summary).toBe("the wall");
+		expect(app.conversation).toBe(3100);
+		expect(app.anchor).toBe(3099);
+		expect(app.entries).toBe(2);
+		// a project is not a worktree agent: no branch, no worktree, no reply entry
+		expect(app.branch).toBe("");
+		expect(app.worktree).toBeNull();
+		expect(app.last_reply).toBeNull();
+	});
+
+	it("retires a project whose anchor reached terminal, and never calls its anchor an orphan", () => {
+		const { dbPath, logPath } = projectsFixture();
+		const agents = createLedger({ dbPath, logPath }).state().agents;
+		const docs = agents.named.find((card) => card.name === "docs")!;
+		expect(docs.state).toBe("retired");
+		expect(agents.orphans.map((orphan) => orphan.anchor)).not.toContain(3199);
+		// the subagents are untouched by the second registry
+		expect(agents.named.filter((card) => card.kind === "subagent").map((card) => card.name)).toEqual([
+			"probe",
+			"reader",
+			"wall-ui",
+		]);
+	});
+
+	it("titles a project space by its project name in the picker", () => {
+		const { dbPath, logPath } = projectsFixture();
+		const list = createLedger({ dbPath, logPath }).conversations();
+		const titles = Object.fromEntries(list.conversations.map((conversation) => [conversation.id, conversation.title]));
+		expect(titles[3100]).toBe("app");
+		expect(titles[3200]).toBe("docs");
+	});
+
+	it("names no project when the registry document is missing or unreadable", () => {
+		const { dbPath, logPath } = agentsFixture();
+		const agents = createLedger({ dbPath, logPath }).state().agents;
+		expect(agents.named.some((card) => card.kind === "project")).toBe(false);
+
+		const db = new DatabaseSync(dbPath);
+		writeDocument(db, 60, "app.projects", { projects: "not an object" }, []);
+		db.close();
+		const broken = createLedger({ dbPath, logPath }).state().agents;
+		expect(broken.ok).toBe(true);
+		expect(broken.named.some((card) => card.kind === "project")).toBe(false);
 	});
 
 	it("serves the agents block on /api/state", async () => {

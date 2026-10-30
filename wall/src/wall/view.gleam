@@ -31,6 +31,7 @@ pub fn view(current: model.Model) -> Element(model.Msg) {
       model.Dashboard -> dashboard(current)
       model.LogsTab -> logs_tab(current)
       model.BrowserTab -> browser_tab(current)
+      model.ProjectsTab -> projects_tab(current)
     },
     footer(current),
   ])
@@ -50,7 +51,7 @@ fn header(current: model.Model) -> Element(model.Msg) {
     html.h1([attribute.class("title")], [text("THE WALL")]),
     html.nav(
       [attribute.class("tabs")],
-      list.map([model.Dashboard, model.LogsTab, model.BrowserTab], fn(tab) {
+      list.map([model.Dashboard, model.LogsTab, model.BrowserTab, model.ProjectsTab], fn(tab) {
         html.button(
           [
             attribute.attribute("type", "button"),
@@ -162,12 +163,22 @@ fn agents_card(current: model.Model) -> Element(model.Msg) {
     section_title("AGENTS"),
     html.p([attribute.class("work-line")], [text(model.work_line(agents))]),
     agent_entry("pi-spike", agents.spike_state, "main conversation", "", None, False),
-    case agents.named {
+    case model.subagent_cards(agents) {
       [] -> html.p([attribute.class("muted")], [text("no named subagents")])
       cards ->
         html.div([attribute.class("agents")], list.map(cards, fn(card) {
           agent_entry(card.name, card.state, card.branch, card.worktree, card.last_reply, True)
         }))
+    },
+    case model.project_cards(agents) {
+      [] -> element_none()
+      cards ->
+        html.p([attribute.class("agent-projects")], [
+          text(
+            int.to_string(list.length(cards))
+            <> " project(s) — see the PROJECTS tab",
+          ),
+        ])
     },
     orphans_row(agents),
   ])
@@ -398,6 +409,47 @@ fn or_default_queue(queue: Option(model.Queue)) -> model.Queue {
 /// The ledger browser: a filter row, then newest-first rows. Every row is a
 /// `<details>` whose first child is the human line — so the raw record is one
 /// click away and never in the way.
+/// The PROJECTS view: one row per bound project — name, state, the room that
+/// steers it (short form), its directory, and how much history it holds. The
+/// rows are the AGENTS cards filtered by `kind`, so the two views can never
+/// disagree about a project's state.
+fn projects_tab(current: model.Model) -> Element(model.Msg) {
+  let agents = current.agents |> or_default_agents()
+  let cards = model.project_cards(agents)
+  html.section([attribute.class("pane projects")], [
+    html.div([attribute.class("pane-head")], [
+      html.h2([attribute.class("pane-title")], [text("PROJECTS")]),
+      html.span([attribute.class("muted")], [text(model.project_count_line(cards))]),
+    ]),
+    case cards {
+      [] ->
+        html.p([attribute.class("muted")], [
+          text(
+            "A project is a room bound to its own conversation. Type /project new <name> in a room to make one, or /project bind <name> <path> to adopt a directory.",
+          ),
+        ])
+      cards ->
+        html.div([attribute.class("project-list")], list.map(cards, project_row))
+    },
+  ])
+}
+
+fn project_row(card: model.AgentCard) -> Element(model.Msg) {
+  html.div([attribute.class("project")], [
+    html.div([attribute.class("project-head")], [
+      html.span([attribute.class("project-name")], [text(card.name)]),
+      html.span([attribute.class(model.agent_state_class(card.state))], [
+        text(model.agent_state_label(card.state)),
+      ]),
+    ]),
+    html.div([attribute.class("project-line")], [text(model.project_line(card))]),
+    html.div([attribute.class("project-dir")], [text(model.project_dir(card))]),
+    html.div([attribute.class("project-summary")], [
+      text(model.project_summary(card)),
+    ]),
+  ])
+}
+
 fn logs_tab(current: model.Model) -> Element(model.Msg) {
   let logs = or_default_logs(current.logs)
   html.section([attribute.class("logs")], [

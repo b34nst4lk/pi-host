@@ -157,28 +157,52 @@ export const Agent$Agent$state = (value) => value.state;
 export const Agent$Agent$4 = (value) => value.state;
 
 export class AgentCard extends $CustomType {
-  constructor(name, state, branch, worktree, last_reply) {
+  constructor(kind, name, state, branch, worktree, last_reply, room, cwd, summary, entries) {
     super();
+    this.kind = kind;
     this.name = name;
     this.state = state;
     this.branch = branch;
     this.worktree = worktree;
     this.last_reply = last_reply;
+    this.room = room;
+    this.cwd = cwd;
+    this.summary = summary;
+    this.entries = entries;
   }
 }
-export const AgentCard$AgentCard = (name, state, branch, worktree, last_reply) =>
-  new AgentCard(name, state, branch, worktree, last_reply);
+export const AgentCard$AgentCard = (kind, name, state, branch, worktree, last_reply, room, cwd, summary, entries) =>
+  new AgentCard(kind,
+  name,
+  state,
+  branch,
+  worktree,
+  last_reply,
+  room,
+  cwd,
+  summary,
+  entries);
 export const AgentCard$isAgentCard = (value) => value instanceof AgentCard;
+export const AgentCard$AgentCard$kind = (value) => value.kind;
+export const AgentCard$AgentCard$0 = (value) => value.kind;
 export const AgentCard$AgentCard$name = (value) => value.name;
-export const AgentCard$AgentCard$0 = (value) => value.name;
+export const AgentCard$AgentCard$1 = (value) => value.name;
 export const AgentCard$AgentCard$state = (value) => value.state;
-export const AgentCard$AgentCard$1 = (value) => value.state;
+export const AgentCard$AgentCard$2 = (value) => value.state;
 export const AgentCard$AgentCard$branch = (value) => value.branch;
-export const AgentCard$AgentCard$2 = (value) => value.branch;
+export const AgentCard$AgentCard$3 = (value) => value.branch;
 export const AgentCard$AgentCard$worktree = (value) => value.worktree;
-export const AgentCard$AgentCard$3 = (value) => value.worktree;
+export const AgentCard$AgentCard$4 = (value) => value.worktree;
 export const AgentCard$AgentCard$last_reply = (value) => value.last_reply;
-export const AgentCard$AgentCard$4 = (value) => value.last_reply;
+export const AgentCard$AgentCard$5 = (value) => value.last_reply;
+export const AgentCard$AgentCard$room = (value) => value.room;
+export const AgentCard$AgentCard$6 = (value) => value.room;
+export const AgentCard$AgentCard$cwd = (value) => value.cwd;
+export const AgentCard$AgentCard$7 = (value) => value.cwd;
+export const AgentCard$AgentCard$summary = (value) => value.summary;
+export const AgentCard$AgentCard$8 = (value) => value.summary;
+export const AgentCard$AgentCard$entries = (value) => value.entries;
+export const AgentCard$AgentCard$9 = (value) => value.entries;
 
 export class Orphan extends $CustomType {
   constructor(anchor, conversation) {
@@ -196,8 +220,9 @@ export const Orphan$Orphan$conversation = (value) => value.conversation;
 export const Orphan$Orphan$1 = (value) => value.conversation;
 
 export class Agents extends $CustomType {
-  constructor(spike_state, named, orphans, retired, in_flight, queued) {
+  constructor(spike_kind, spike_state, named, orphans, retired, in_flight, queued) {
     super();
+    this.spike_kind = spike_kind;
     this.spike_state = spike_state;
     this.named = named;
     this.orphans = orphans;
@@ -206,21 +231,23 @@ export class Agents extends $CustomType {
     this.queued = queued;
   }
 }
-export const Agents$Agents = (spike_state, named, orphans, retired, in_flight, queued) =>
-  new Agents(spike_state, named, orphans, retired, in_flight, queued);
+export const Agents$Agents = (spike_kind, spike_state, named, orphans, retired, in_flight, queued) =>
+  new Agents(spike_kind, spike_state, named, orphans, retired, in_flight, queued);
 export const Agents$isAgents = (value) => value instanceof Agents;
+export const Agents$Agents$spike_kind = (value) => value.spike_kind;
+export const Agents$Agents$0 = (value) => value.spike_kind;
 export const Agents$Agents$spike_state = (value) => value.spike_state;
-export const Agents$Agents$0 = (value) => value.spike_state;
+export const Agents$Agents$1 = (value) => value.spike_state;
 export const Agents$Agents$named = (value) => value.named;
-export const Agents$Agents$1 = (value) => value.named;
+export const Agents$Agents$2 = (value) => value.named;
 export const Agents$Agents$orphans = (value) => value.orphans;
-export const Agents$Agents$2 = (value) => value.orphans;
+export const Agents$Agents$3 = (value) => value.orphans;
 export const Agents$Agents$retired = (value) => value.retired;
-export const Agents$Agents$3 = (value) => value.retired;
+export const Agents$Agents$4 = (value) => value.retired;
 export const Agents$Agents$in_flight = (value) => value.in_flight;
-export const Agents$Agents$4 = (value) => value.in_flight;
+export const Agents$Agents$5 = (value) => value.in_flight;
 export const Agents$Agents$queued = (value) => value.queued;
-export const Agents$Agents$5 = (value) => value.queued;
+export const Agents$Agents$6 = (value) => value.queued;
 
 export class Queue extends $CustomType {
   constructor(inbox_depth, running, pending, unanswered, errors) {
@@ -584,6 +611,11 @@ export class BrowserTab extends $CustomType {}
 export const Tab$BrowserTab$const = new BrowserTab();
 export const Tab$BrowserTab = () => Tab$BrowserTab$const;
 export const Tab$isBrowserTab = (value) => value instanceof BrowserTab;
+
+export class ProjectsTab extends $CustomType {}
+export const Tab$ProjectsTab$const = new ProjectsTab();
+export const Tab$ProjectsTab = () => Tab$ProjectsTab$const;
+export const Tab$isProjectsTab = (value) => value instanceof ProjectsTab;
 
 export class BothWays extends $CustomType {}
 export const Direction$BothWays$const = new BothWays();
@@ -1253,6 +1285,7 @@ export function work_line(agents) {
  */
 export function empty_agents() {
   return new Agents(
+    "main",
     "unknown",
     $List$Empty$const,
     $List$Empty$const,
@@ -1291,8 +1324,10 @@ export function tab_label(tab) {
     return "dashboard";
   } else if (tab instanceof LogsTab) {
     return "logs";
-  } else {
+  } else if (tab instanceof BrowserTab) {
     return "browser";
+  } else {
+    return "projects";
   }
 }
 
@@ -1731,4 +1766,103 @@ export function search_path(query, limit) {
   return (("/api/search?limit=" + $int.to_string(limit)) + "&q=") + url_encode(
     $string.trim(query),
   );
+}
+
+/**
+ * The cards that are projects: the AGENTS list, filtered by kind.
+ */
+export function project_cards(agents) {
+  return $list.filter(
+    agents.named,
+    (card) => { return card.kind === "project"; },
+  );
+}
+
+/**
+ * The subagent cards, same list, the other side of the filter.
+ */
+export function subagent_cards(agents) {
+  return $list.filter(
+    agents.named,
+    (card) => { return card.kind !== "project"; },
+  );
+}
+
+/**
+ * `!ig3PmgqC-rUdJMNvo6sfPHRtUlIMaeU8XqidpXpufmU` → `!ig3PmgqC-r…XpufmU`.
+ * A short id (`!short:jacks.im`) is already readable, so it comes back whole.
+ */
+export function room_short(room) {
+  let $ = $string.length(room) > 20;
+  if ($) {
+    return ($string.slice(room, 0, 11) + "…") + $string.slice(
+      room,
+      $string.length(room) - 6,
+      $string.length(room),
+    );
+  } else {
+    return room;
+  }
+}
+
+/**
+ * `app — room !ig3PmgqC-r…XpufmU — 12 entries`: what the projects pane prints
+ * above a card's directory. Unknowns say so instead of printing `None`.
+ */
+export function project_line(card) {
+  let _block;
+  let $ = card.room;
+  if ($ instanceof Some) {
+    let room = $[0];
+    _block = room_short(room);
+  } else {
+    _block = "no room";
+  }
+  let room = _block;
+  return ((((card.name + " — room ") + room) + " — ") + format_count(
+    card.entries,
+  )) + " entries";
+}
+
+/**
+ * The directory a project works in, or a plain statement that nothing said.
+ */
+export function project_dir(card) {
+  let $ = card.cwd;
+  if ($ instanceof Some) {
+    let cwd = $[0];
+    return cwd;
+  } else {
+    return "no directory";
+  }
+}
+
+/**
+ * The one-line summary from `AGENTS.md`, or a nudge to write one.
+ */
+export function project_summary(card) {
+  let $ = card.summary;
+  if ($ instanceof Some) {
+    let summary = $[0];
+    if (summary !== "") {
+      return summary;
+    } else {
+      return "no AGENTS.md summary yet";
+    }
+  } else {
+    return "no AGENTS.md summary yet";
+  }
+}
+
+/**
+ * `2 projects` / `no projects yet`, the pane's heading line.
+ */
+export function project_count_line(cards) {
+  if (cards instanceof $Empty) {
+    return "no projects yet — bind one with /project new <name> in a room";
+  } else if (cards.tail instanceof $Empty) {
+    return "1 project";
+  } else {
+    return $int.to_string($list.length(cards)) + " projects";
+  }
 }

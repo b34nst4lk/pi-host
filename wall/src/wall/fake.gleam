@@ -62,13 +62,33 @@ pub fn state_json(poll: Int) -> String {
   // The agent-state cards: spike, three named agents in three different states,
   // one orphan, and the run counter that replaced "tasks running".
   <> "\"agents\":{\"ok\":true,\"error\":null,"
-  <> "\"spike\":{\"state\":\"working\",\"conversation\":1},"
+  <> "\"spike\":{\"kind\":\"main\",\"state\":\"working\",\"conversation\":1},"
   <> "\"named\":["
   <> card("reader", "working", "worktree-reader", "/opt/pi-host/workspace/worktrees/reader", 2393)
   <> ","
   <> card("wall-ui", "reporting", "worktree-wall-ui", "/opt/pi-host/workspace/worktrees/wall-ui", 2409)
   <> ","
   <> card("docs", "alive", "worktree-docs", "/opt/pi-host/workspace/worktrees/docs", 2181)
+  // Two projects: a room bound to its own conversation, with a live room id and a
+  // short one — the pane's short forms are visible side by side in fake mode.
+  <> ","
+  <> project(
+    "the-wall",
+    "working",
+    "!ig3PmgqC-rUdJMNvo6sfPHRtUlIMaeU8XqidpXpufmU",
+    "/home/jacksim/hermes-users/jacksim/workspace/projects/the-wall",
+    "the wall: a read-only window on the ledger",
+    1832,
+  )
+  <> ","
+  <> project(
+    "docs",
+    "alive",
+    "!docs:jacks.im",
+    "/home/jacksim/hermes-users/jacksim/workspace/projects/docs",
+    "",
+    12,
+  )
   <> "],"
   <> "\"orphans\":[{\"anchor\":2201,\"conversation\":2202}],"
   <> "\"retired\":2,"
@@ -86,7 +106,7 @@ fn card(
   worktree: String,
   last_reply: Int,
 ) -> String {
-  "{\"name\":\""
+  "{\"kind\":\"subagent\",\"name\":\""
   <> name
   <> "\",\"state\":\""
   <> state
@@ -97,6 +117,30 @@ fn card(
   <> "\",\"last_reply\":"
   <> int.to_string(last_reply)
   <> ",\"conversation\":15,\"anchor\":16}"
+}
+
+/// One project card: the same shape as a subagent card, plus where it lives.
+fn project(
+  name: String,
+  state: String,
+  room: String,
+  cwd: String,
+  summary: String,
+  entries: Int,
+) -> String {
+  "{\"kind\":\"project\",\"name\":\""
+  <> name
+  <> "\",\"state\":\""
+  <> state
+  <> "\",\"branch\":\"\",\"worktree\":null,\"last_reply\":null,\"room\":\""
+  <> room
+  <> "\",\"cwd\":\""
+  <> cwd
+  <> "\",\"summary\":\""
+  <> summary
+  <> "\",\"entries\":"
+  <> int.to_string(entries)
+  <> ",\"conversation\":21,\"anchor\":22}"
 }
 
 fn agent(name: String, branch: String, reports: Int) -> String {

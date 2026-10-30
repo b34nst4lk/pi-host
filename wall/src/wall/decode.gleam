@@ -45,6 +45,9 @@ fn state_decoder() -> decode.Decoder(State) {
   use running <- optional_int_at(["queue", "tasks", "running"])
   use pending <- optional_int_at(["queue", "tasks", "pending"])
   use unanswered <- optional_int_at(["queue", "submissions", "unanswered"])
+  use spike_kind <- with_then(
+    decode.optionally_at(["agents", "spike", "kind"], "main", decode.string),
+  )
   use spike_state <- with_then(
     decode.optionally_at(["agents", "spike", "state"], "unknown", decode.string),
   )
@@ -78,6 +81,7 @@ fn state_decoder() -> decode.Decoder(State) {
       errors: [],
     ),
     agents: model.Agents(
+      spike_kind: spike_kind,
       spike_state: spike_state,
       named: named,
       orphans: orphans,
@@ -89,17 +93,31 @@ fn state_decoder() -> decode.Decoder(State) {
 }
 
 fn agent_card_decoder() -> decode.Decoder(model.AgentCard) {
+  use kind <- field_or("kind", "subagent", decode.string)
   use name <- field_or("name", "unnamed", decode.string)
   use state <- field_or("state", "unknown", decode.string)
-  use branch <- field_or("branch", "", decode.string)
-  use worktree <- field_or("worktree", "", decode.string)
+  // `branch`/`worktree` can be an explicit `null` on a project card: a project has
+  // a `cwd`, not a worktree, and the reader says so rather than inventing "".
+  use branch <- nullable_string("branch", "", decode.string)
+  use worktree <- nullable_string("worktree", "", decode.string)
   use last_reply <- optional_int("last_reply")
+  // Project-only fields: absent on a subagent card, and absent on an older
+  // reader's payload — both decode as \`None\`, which the view prints as "—".
+  use room <- optional_string("room")
+  use cwd <- optional_string("cwd")
+  use summary <- optional_string("summary")
+  use entries <- optional_int("entries")
   decode.success(model.AgentCard(
+    kind: kind,
     name: name,
     state: state,
     branch: branch,
     worktree: worktree,
     last_reply: last_reply,
+    room: room,
+    cwd: cwd,
+    summary: summary,
+    entries: entries,
   ))
 }
 
@@ -143,6 +161,19 @@ fn field_or(
   next: fn(a) -> decode.Decoder(b),
 ) -> decode.Decoder(b) {
   decode.optional_field(name, default, inner, next)
+}
+
+/// A string field the reader may send as JSON `null`. Null, a missing key and a
+/// wrong type all come back as the default — a card is never dropped for it.
+fn nullable_string(
+  name: String,
+  default: a,
+  inner: decode.Decoder(a),
+  next: fn(a) -> decode.Decoder(b),
+) -> decode.Decoder(b) {
+  decode.optional_field(name, None, decode.optional(inner), fn(value) {
+    next(option_or(value, default))
+  })
 }
 
 fn optional_int(

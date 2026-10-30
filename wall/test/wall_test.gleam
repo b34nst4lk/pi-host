@@ -123,11 +123,16 @@ pub fn decodes_a_reader_state_test() {
   state.vitals.sync_state |> should.equal(model.Live)
   state.vitals.sync_seq |> should.equal(Some(41))
   state.queue.inbox_depth |> should.equal(Some(0))
+  state.agents.spike_kind |> should.equal("main")
   state.agents.spike_state |> should.equal("working")
   state.agents.in_flight |> should.equal(Some(3))
   state.agents.queued |> should.equal(Some(0))
   state.agents.retired |> should.equal(Some(2))
-  list.length(state.agents.named) |> should.equal(3)
+  // Three subagents and two projects in one list: the pane filters, it does not
+  // read a second endpoint.
+  list.length(state.agents.named) |> should.equal(5)
+  model.subagent_cards(state.agents) |> list.length |> should.equal(3)
+  model.project_cards(state.agents) |> list.length |> should.equal(2)
   case list.first(state.agents.named) {
     Ok(card) -> {
       card.name |> should.equal("reader")
@@ -253,6 +258,7 @@ pub fn agent_without_state_is_unknown_test() {
 
 pub fn work_line_test() {
   let agents = model.Agents(
+    spike_kind: "main",
     spike_state: "working",
     named: [],
     orphans: [],
@@ -282,7 +288,7 @@ pub fn orphan_summary_test() {
 /// A named agent's last answer is an entry id or `—`; there is no zero.
 pub fn last_reply_renders_as_entry_or_dash_test() {
   let assert Ok(state) = decode.state(fake.state_json(0))
-  state.agents.named
+  model.subagent_cards(state.agents)
   |> list.map(fn(card) {
     case card.last_reply {
       option.Some(entry) -> int.to_string(entry)
@@ -471,6 +477,164 @@ pub fn decodes_a_spill_test() {
   decode.spill("{\"ok\":false}") |> should.equal(Error("no such file"))
   let assert Error(problem) = decode.spill("<html>")
   problem |> string.starts_with("unexpected response shape: ") |> should.be_true()
+}
+
+// --- the projects view ----------------------------------------------------
+//
+// A project is a room bound to its own conversation. The wall shows them as a
+// filtered view of the agent cards, so these assertions pin the three things the
+// pane could get wrong: the short room form, the fallbacks when a card is thin,
+// and that the pane draws one row per project — and that the dashboard's AGENTS
+// card does NOT list them, because a project is not a subagent.
+
+fn sample_projects() -> model.Agents {
+  model.Agents(
+    ..model.empty_agents(),
+    named: [
+      model.AgentCard(
+        kind: "project",
+        name: "the-wall",
+        state: "working",
+        branch: "",
+        worktree: "",
+        last_reply: None,
+        room: Some("!ig3PmgqC-rUdJMNvo6sfPHRtUlIMaeU8XqidpXpufmU"),
+        cwd: Some("/work/projects/the-wall"),
+        summary: Some("the wall: a read-only window on the ledger"),
+        entries: Some(1832),
+      ),
+      model.AgentCard(
+        kind: "project",
+        name: "docs",
+        state: "retired",
+        branch: "",
+        worktree: "",
+        last_reply: None,
+        room: None,
+        cwd: None,
+        summary: Some(""),
+        entries: None,
+      ),
+      model.AgentCard(
+        kind: "subagent",
+        name: "reader",
+        state: "alive",
+        branch: "worktree-reader",
+        worktree: "/w/reader",
+        last_reply: Some(2393),
+        room: None,
+        cwd: None,
+        summary: None,
+        entries: None,
+      ),
+    ],
+  )
+}
+
+fn projects_model() -> model.Model {
+  model.Model(
+    ..model.initial(model.LiveMode),
+    tab: model.ProjectsTab,
+    agents: Some(sample_projects()),
+  )
+}
+
+pub fn room_short_keeps_short_ids_and_clips_long_ones_test() {
+  model.room_short("!docs:jacks.im") |> should.equal("!docs:jacks.im")
+  model.room_short("!ig3PmgqC-rUdJMNvo6sfPHRtUlIMaeU8XqidpXpufmU")
+  |> should.equal("!ig3PmgqC-r…XpufmU")
+  // exactly 20 characters is still readable, so it comes back whole
+  model.room_short("!abcdefghij:jacks.im")
+  |> should.equal("!abcdefghij:jacks.im")
+}
+
+pub fn project_line_names_the_room_and_the_history_test() {
+  let projects = sample_projects()
+  let assert [the_wall, docs] = model.project_cards(projects)
+  model.project_line(the_wall)
+  |> should.equal("the-wall — room !ig3PmgqC-r…XpufmU — 1,832 entries")
+  // no room, no count: the line says so instead of printing a zero
+  model.project_line(docs) |> should.equal("docs — room no room — — entries")
+}
+
+pub fn project_fallbacks_never_invent_a_directory_or_a_summary_test() {
+  let assert [the_wall, docs] = model.project_cards(sample_projects())
+  model.project_dir(the_wall) |> should.equal("/work/projects/the-wall")
+  model.project_summary(the_wall)
+  |> should.equal("the wall: a read-only window on the ledger")
+  model.project_dir(docs) |> should.equal("no directory")
+  // "" is not a summary: an AGENTS.md with no first line says so
+  model.project_summary(docs) |> should.equal("no AGENTS.md summary yet")
+}
+
+pub fn project_count_line_teaches_the_command_when_empty_test() {
+  model.project_count_line([])
+  |> should.equal("no projects yet — bind one with /project new <name> in a room")
+  model.project_count_line(model.project_cards(sample_projects()))
+  |> should.equal("2 projects")
+}
+
+pub fn a_project_card_decodes_its_own_fields_test() {
+  let json =
+    "{\"v\":1,\"ok\":true,\"agents\":{\"named\":[{\"kind\":\"project\",\"name\":\"the-wall\",\"state\":\"working\",\"branch\":\"\",\"worktree\":null,\"last_reply\":null,\"room\":\"!r:jacks.im\",\"cwd\":\"/w/p\",\"summary\":\"s\",\"entries\":7}]}}"
+  let assert Ok(state) = decode.state(json)
+  let assert Ok(card) = list.first(state.agents.named)
+  card.kind |> should.equal("project")
+  card.room |> should.equal(Some("!r:jacks.im"))
+  card.cwd |> should.equal(Some("/w/p"))
+  card.summary |> should.equal(Some("s"))
+  card.entries |> should.equal(Some(7))
+  // an explicit null worktree is a default, not a decode failure
+  card.worktree |> should.equal("")
+  card.last_reply |> should.equal(None)
+}
+
+pub fn a_card_without_a_kind_is_a_subagent_test() {
+  // Older readers have no `kind`: those cards are subagents, never projects.
+  let json = "{\"v\":1,\"ok\":true,\"agents\":{\"named\":[{\"name\":\"reader\",\"state\":\"alive\"}]}}"
+  let assert Ok(state) = decode.state(json)
+  let assert Ok(card) = list.first(state.agents.named)
+  card.kind |> should.equal("subagent")
+  model.project_cards(state.agents) |> list.length |> should.equal(0)
+}
+
+pub fn the_projects_tab_draws_a_row_per_project_test() {
+  let html = view.view(projects_model()) |> element.to_string
+  html |> count_of("class=\"project\"") |> should.equal(2)
+  html |> string.contains("PROJECTS") |> should.be_true()
+  html |> string.contains("2 projects") |> should.be_true()
+  html |> string.contains("the-wall") |> should.be_true()
+  html |> string.contains("!ig3PmgqC-r…XpufmU") |> should.be_true()
+  html |> string.contains("/work/projects/the-wall") |> should.be_true()
+  html |> string.contains("1,832 entries") |> should.be_true()
+  html |> string.contains("state-working") |> should.be_true()
+  html |> string.contains("no directory") |> should.be_true()
+  // the subagent in the same list is not a project row
+  html |> string.contains("worktree-reader") |> should.be_false()
+  // and the dashboard is off the page
+  html |> string.contains("VITALS") |> should.be_false()
+}
+
+pub fn an_empty_projects_tab_teaches_the_command_test() {
+  let empty = model.Model(
+    ..model.initial(model.LiveMode),
+    tab: model.ProjectsTab,
+    agents: Some(model.empty_agents()),
+  )
+  let html = view.view(empty) |> element.to_string
+  html |> count_of("class=\"project\"") |> should.equal(0)
+  html |> string.contains("/project new") |> should.be_true()
+  html |> string.contains("no projects yet") |> should.be_true()
+}
+
+pub fn the_dashboard_agents_card_points_at_the_projects_tab_test() {
+  let html = view.view(model.Model(
+    ..model.initial(model.LiveMode),
+    agents: Some(sample_projects()),
+  )) |> element.to_string
+  // the subagent is an agent card; the projects are a one-line count, not cards
+  html |> string.contains("worktree-reader") |> should.be_true()
+  html |> string.contains("2 project(s) — see the PROJECTS tab") |> should.be_true()
 }
 
 // --- the logs tab: rendering ----------------------------------------------

@@ -31,6 +31,132 @@ function footer(current) {
   );
 }
 
+function project_row(card) {
+  return $html.div(
+    listPrepend($attribute.class$("project"), $List$Empty$const),
+    listPrepend(
+      $html.div(
+        listPrepend($attribute.class$("project-head"), $List$Empty$const),
+        listPrepend(
+          $html.span(
+            listPrepend($attribute.class$("project-name"), $List$Empty$const),
+            listPrepend(text(card.name), $List$Empty$const),
+          ),
+          listPrepend(
+            $html.span(
+              listPrepend(
+                $attribute.class$($model.agent_state_class(card.state)),
+                $List$Empty$const,
+              ),
+              listPrepend(
+                text($model.agent_state_label(card.state)),
+                $List$Empty$const,
+              ),
+            ),
+            $List$Empty$const,
+          ),
+        ),
+      ),
+      listPrepend(
+        $html.div(
+          listPrepend($attribute.class$("project-line"), $List$Empty$const),
+          listPrepend(text($model.project_line(card)), $List$Empty$const),
+        ),
+        listPrepend(
+          $html.div(
+            listPrepend($attribute.class$("project-dir"), $List$Empty$const),
+            listPrepend(text($model.project_dir(card)), $List$Empty$const),
+          ),
+          listPrepend(
+            $html.div(
+              listPrepend(
+                $attribute.class$("project-summary"),
+                $List$Empty$const,
+              ),
+              listPrepend(text($model.project_summary(card)), $List$Empty$const),
+            ),
+            $List$Empty$const,
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+function or_default_agents(agents) {
+  if (agents instanceof Some) {
+    let agents$1 = agents[0];
+    return agents$1;
+  } else {
+    return $model.empty_agents();
+  }
+}
+
+/**
+ * The ledger browser: a filter row, then newest-first rows. Every row is a
+ * `<details>` whose first child is the human line — so the raw record is one
+ * click away and never in the way.
+ * The PROJECTS view: one row per bound project — name, state, the room that
+ * steers it (short form), its directory, and how much history it holds. The
+ * rows are the AGENTS cards filtered by `kind`, so the two views can never
+ * disagree about a project's state.
+ * 
+ * @ignore
+ */
+function projects_tab(current) {
+  let _block;
+  let _pipe = current.agents;
+  _block = or_default_agents(_pipe);
+  let agents = _block;
+  let cards = $model.project_cards(agents);
+  return $html.section(
+    listPrepend($attribute.class$("pane projects"), $List$Empty$const),
+    listPrepend(
+      $html.div(
+        listPrepend($attribute.class$("pane-head"), $List$Empty$const),
+        listPrepend(
+          $html.h2(
+            listPrepend($attribute.class$("pane-title"), $List$Empty$const),
+            listPrepend(text("PROJECTS"), $List$Empty$const),
+          ),
+          listPrepend(
+            $html.span(
+              listPrepend($attribute.class$("muted"), $List$Empty$const),
+              listPrepend(
+                text($model.project_count_line(cards)),
+                $List$Empty$const,
+              ),
+            ),
+            $List$Empty$const,
+          ),
+        ),
+      ),
+      listPrepend(
+        (() => {
+          if (cards instanceof $Empty) {
+            return $html.p(
+              listPrepend($attribute.class$("muted"), $List$Empty$const),
+              listPrepend(
+                text(
+                  "A project is a room bound to its own conversation. Type /project new <name> in a room to make one, or /project bind <name> <path> to adopt a directory.",
+                ),
+                $List$Empty$const,
+              ),
+            );
+          } else {
+            let cards$1 = cards;
+            return $html.div(
+              listPrepend($attribute.class$("project-list"), $List$Empty$const),
+              $list.map(cards$1, project_row),
+            );
+          }
+        })(),
+        $List$Empty$const,
+      ),
+    ),
+  );
+}
+
 function element_none() {
   return $html.span(
     listPrepend($attribute.class$("hidden"), $List$Empty$const),
@@ -700,13 +826,6 @@ function kind_chips(filters) {
   );
 }
 
-/**
- * The ledger browser: a filter row, then newest-first rows. Every row is a
- * `<details>` whose first child is the human line — so the raw record is one
- * click away and never in the way.
- * 
- * @ignore
- */
 function logs_tab(current) {
   let logs = or_default_logs(current.logs);
   return $html.section(
@@ -866,15 +985,6 @@ function section_title(label) {
     listPrepend($attribute.class$("card-title"), $List$Empty$const),
     listPrepend(text(label), $List$Empty$const),
   );
-}
-
-function or_default_agents(agents) {
-  if (agents instanceof Some) {
-    let agents$1 = agents[0];
-    return agents$1;
-  } else {
-    return $model.empty_agents();
-  }
 }
 
 function or_default_queue(queue) {
@@ -1122,7 +1232,7 @@ function agents_card(current) {
           ),
           listPrepend(
             (() => {
-              let $ = agents.named;
+              let $ = $model.subagent_cards(agents);
               if ($ instanceof $Empty) {
                 return $html.p(
                   listPrepend($attribute.class$("muted"), $List$Empty$const),
@@ -1148,7 +1258,29 @@ function agents_card(current) {
                 );
               }
             })(),
-            listPrepend(orphans_row(agents), $List$Empty$const),
+            listPrepend(
+              (() => {
+                let $ = $model.project_cards(agents);
+                if ($ instanceof $Empty) {
+                  return element_none();
+                } else {
+                  let cards = $;
+                  return $html.p(
+                    listPrepend(
+                      $attribute.class$("agent-projects"),
+                      $List$Empty$const,
+                    ),
+                    listPrepend(
+                      text(
+                        $int.to_string($list.length(cards)) + " project(s) — see the PROJECTS tab",
+                      ),
+                      $List$Empty$const,
+                    ),
+                  );
+                }
+              })(),
+              listPrepend(orphans_row(agents), $List$Empty$const),
+            ),
           ),
         ),
       ),
@@ -1538,7 +1670,10 @@ function header(current) {
               $model.Tab$Dashboard$const,
               listPrepend(
                 $model.Tab$LogsTab$const,
-                listPrepend($model.Tab$BrowserTab$const, $List$Empty$const),
+                listPrepend(
+                  $model.Tab$BrowserTab$const,
+                  listPrepend($model.Tab$ProjectsTab$const, $List$Empty$const),
+                ),
               ),
             ),
             (tab) => {
@@ -1587,8 +1722,10 @@ export function view(current) {
               return dashboard(current);
             } else if ($ instanceof $model.LogsTab) {
               return logs_tab(current);
-            } else {
+            } else if ($ instanceof $model.BrowserTab) {
               return browser_tab(current);
+            } else {
+              return projects_tab(current);
             }
           })(),
           listPrepend(footer(current), $List$Empty$const),

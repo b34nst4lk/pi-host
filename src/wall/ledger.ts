@@ -289,8 +289,11 @@ export function createLedger(options: LedgerOptions): Ledger {
 
 	function agentsReport(): AgentsReport {
 		// The registry is already read for `fleet`; the cards reuse it rather than
-		// reopening the same document.
+		// reopening the same document. Projects are a second registry (`app.projects`),
+		// and their cards join the same list, tagged `kind: "project"`.
 		const registry = fleetReport();
+		const projectsProbe = withDb((db) => projectRows(db));
+		const projects = projectsProbe.value ?? [];
 		const probe = withDb((db) => {
 			const owners = readConversationOwners(db);
 			const rootId = rootConversation(owners);
@@ -315,10 +318,21 @@ export function createLedger(options: LedgerOptions): Ledger {
 				const child = childOfAnchor(anchor);
 				if (child !== null) wanted.add(child);
 			}
+			for (const project of projects) {
+				if (project.conversation !== null) wanted.add(project.conversation);
+			}
+
+			// A project's card shows how much history it holds; one count per project.
+			const entryCounts = new Map<number, number>();
+			for (const project of projects) {
+				if (project.conversation !== null) {
+					entryCounts.set(project.conversation, countEntries(db, project.conversation));
+				}
+			}
 
 			const facts = new Map<number, ChildFacts>();
 			for (const conversation of wanted) facts.set(conversation, readChildFacts(db, conversation));
-			return { owners, rootId, anchors, reporting, facts, childOfAnchor };
+			return { owners, rootId, anchors, reporting, facts, childOfAnchor, entryCounts };
 		});
 
 		const named: NamedAgentCard[] = [];
@@ -326,6 +340,7 @@ export function createLedger(options: LedgerOptions): Ledger {
 			// Unreadable ledger: still name the agents (the registry parsed), state unknown.
 			for (const agent of registry.agents) {
 				named.push({
+					kind: "subagent",
 					name: agent.name,
 					state: "unknown",
 					branch: agent.branch,
@@ -333,12 +348,32 @@ export function createLedger(options: LedgerOptions): Ledger {
 					last_reply: agent.last_report_entry,
 					conversation: agent.conversation_id,
 					anchor: null,
+					room: null,
+					cwd: null,
+					summary: null,
+					entries: null,
+				});
+			}
+			for (const project of projects) {
+				named.push({
+					kind: "project",
+					name: project.name,
+					state: "unknown",
+					branch: "",
+					worktree: null,
+					last_reply: null,
+					conversation: project.conversation,
+					anchor: null,
+					room: project.room,
+					cwd: project.cwd,
+					summary: project.summary,
+					entries: null,
 				});
 			}
 			return {
 				ok: false,
 				error: probe.error,
-				spike: { state: "unknown", conversation: null },
+				spike: { kind: "main", state: "unknown", conversation: null },
 				named,
 				orphans: [],
 				retired: null,
@@ -346,12 +381,15 @@ export function createLedger(options: LedgerOptions): Ledger {
 			};
 		}
 
-		const { owners, rootId, anchors, reporting, facts, childOfAnchor } = probe.value;
+		const { owners, rootId, anchors, reporting, facts, childOfAnchor, entryCounts } = probe.value;
 		const namedConversations = new Set<number>();
 		const namedNames = new Set<string>();
 		for (const agent of registry.agents) {
 			namedNames.add(agent.name);
 			if (agent.conversation_id !== null) namedConversations.add(agent.conversation_id);
+		}
+		for (const project of projects) {
+			if (project.conversation !== null) namedConversations.add(project.conversation);
 		}
 
 		for (const agent of registry.agents) {
@@ -362,6 +400,7 @@ export function createLedger(options: LedgerOptions): Ledger {
 			}) ?? null;
 			const childFacts = conversation === null ? null : facts.get(conversation) ?? null;
 			named.push({
+				kind: "subagent",
 				name: agent.name,
 				state: agentState({
 					// A named agent we cannot locate is `unknown`, not `alive`.
@@ -378,6 +417,44 @@ export function createLedger(options: LedgerOptions): Ledger {
 				last_reply: agent.last_report_entry,
 				conversation,
 				anchor: anchor?.id ?? null,
+				room: null,
+				cwd: null,
+				summary: null,
+				entries: null,
+			});
+		}
+
+		// Projects: the same enum, the same card, a different registry. Their anchor is
+		// matched by CONVERSATION only — every project anchor is named `project-anchor`,
+		// so matching by name here would tag them all with the same project.
+		for (const project of projects) {
+			const conversation = project.conversation;
+			const childFacts = conversation === null ? null : facts.get(conversation) ?? null;
+			const anchor =
+				(conversation === null
+					? null
+					: anchors.find((candidate) => childOfAnchor(candidate) === conversation) ?? null);
+			named.push({
+				kind: "project",
+				name: project.name,
+				state: agentState({
+					readable: childFacts !== null,
+					tasks: childFacts?.tasks ?? [],
+					inbox_items: childFacts?.inbox_items ?? null,
+					live_busy: childFacts?.live_busy ?? null,
+					reporter_pending: conversation !== null && reporting.has(conversation),
+					anchor,
+					named: true,
+				}),
+				branch: "",
+				worktree: null,
+				last_reply: null,
+				conversation,
+				anchor: anchor?.id ?? null,
+				room: project.room,
+				cwd: project.cwd,
+				summary: project.summary,
+				entries: conversation === null ? null : (entryCounts.get(conversation) ?? 0),
 			});
 		}
 
@@ -410,7 +487,7 @@ export function createLedger(options: LedgerOptions): Ledger {
 		return {
 			ok: true,
 			error: probe.error,
-			spike: { state: spike, conversation: rootId },
+			spike: { kind: "main", state: spike, conversation: rootId },
 			named: named.sort((a, b) => a.name.localeCompare(b.name)),
 			orphans: orphans.sort((a, b) => a.anchor - b.anchor),
 			retired,
@@ -599,6 +676,48 @@ export function createLedger(options: LedgerOptions): Ledger {
 	};
 }
 
+// --- the project registry --------------------------------------------------
+
+/** One bound project, as the daemon recorded it in `app.projects`. */
+type ProjectRow = {
+	readonly name: string;
+	readonly room: string | null;
+	readonly conversation: number | null;
+	readonly cwd: string | null;
+	readonly summary: string | null;
+};
+
+/** Anchor kinds the daemon writes for a project (a project is an anchor too). */
+const PROJECT_ANCHOR_KIND = "project-anchor";
+
+/**
+ * `app.projects`: the daemon's project registry. It stores POINTERS (room,
+ * conversation, directory, the path of `AGENTS.md`), so the wall can name a
+ * project but not quote its instructions — which is right: the file is the
+ * source of truth and it changes without a daemon restart.
+ *
+ * A project whose record is unreadable is skipped, never invented.
+ */
+function projectRows(db: DatabaseSync): ProjectRow[] {
+	const doc = readDocument(db, "app.projects");
+	const record = parseRecord(doc?.state);
+	const projects = record ? parseRecord(record.projects) : null;
+	if (!projects) return [];
+	const out: ProjectRow[] = [];
+	for (const [name, raw] of Object.entries(projects)) {
+		const entry = parseRecord(raw);
+		if (!entry) continue;
+		out.push({
+			name,
+			room: str(entry.room),
+			conversation: num(entry.conversation),
+			cwd: str(entry.cwd),
+			summary: str(entry.summary),
+		});
+	}
+	return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
 // --- per-conversation facts the agent enum needs ---------------------------
 
 type ChildFacts = {
@@ -777,6 +896,18 @@ function readTasks(db: DatabaseSync, conversation: number): TaskFact[] {
 	return out;
 }
 
+/** How many entries one conversation holds (a project card's "entries" figure). */
+function countEntries(db: DatabaseSync, conversation: number): number {
+	try {
+		const row = db
+			.prepare("select count(*) as total from entries where conversation_id = ?")
+			.get(conversation) as { total?: unknown } | undefined;
+		return num(row?.total) ?? 0;
+	} catch {
+		return 0;
+	}
+}
+
 function readChildFacts(db: DatabaseSync, conversation: number): ChildFacts {
 	const inbox = readDocumentFor(db, "pi.inbox", conversation);
 	const live = readDocumentFor(db, "pi.live", conversation);
@@ -787,12 +918,18 @@ function readChildFacts(db: DatabaseSync, conversation: number): ChildFacts {
 	};
 }
 
-/** Anchor tasks live in the main conversation; they own the child conversations. */
+/**
+ * Anchor tasks live in the main conversation; they own the child conversations.
+ * Both kinds count: a subagent's anchor (retirable) and a project's anchor
+ * (long-lived) hold a conversation the same way, and the state enum must see
+ * both or a retired project would read as alive.
+ */
 function readAnchors(db: DatabaseSync): AnchorFact[] {
 	const [plain, quoted] = kindVariants(ANCHOR_KIND);
+	const [projectPlain, projectQuoted] = kindVariants(PROJECT_ANCHOR_KIND);
 	const rows = db
-		.prepare("select id, status, conversation_id, record from tasks where kind in (?, ?) order by id")
-		.all(plain, quoted) as Record<string, unknown>[];
+		.prepare("select id, status, conversation_id, record from tasks where kind in (?, ?, ?, ?) order by id")
+		.all(plain, quoted, projectPlain, projectQuoted) as Record<string, unknown>[];
 	const out: AnchorFact[] = [];
 	for (const row of rows) {
 		const id = num(row.id);
