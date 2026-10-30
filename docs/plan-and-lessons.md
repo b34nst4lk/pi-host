@@ -195,6 +195,27 @@ unit-tested.
     across three ticks. General rule: test the shape that distinguishes the
     semantics you actually implemented.
 
+
+14. **Gleam's compiled `main` is exported, never invoked.** The wall rendered
+    blank behind a perfectly-correct server (right MIME, right paths); the
+    fix lives in the page, not the server: an inline module runner calling
+    main(). A lustre SPA is not a module you import and forget.
+15. **Units across SDK boundaries are landmines; convert at one named place.**
+    The exec timeout: the SDK's ShellExecOptions.timeout is SECONDS, the
+    daemon's env var is MILLISECONDS. Passing either straight through is a
+    silent 60x error (15 minutes becoming 15 seconds) — TimeoutEnv converts
+    exactly once, with a comment at the boundary.
+16. **Compose `command` = arguments to the image ENTRYPOINT.** Adding an
+    ENTRYPOINT to the Dockerfile while the compose file still had `command:`
+    naming the runner made the runner receive itself as $1 (room=path) —
+    one booted daemon synced against a script path as its room. When the
+    image gains an entrypoint, compose loses the command.
+17. **A hung probe/exec held the whole conversation for 30 minutes** until an
+    external SIGKILL became a committed model-error. Two guards landed:
+    the exec-timeout wrap (15 min default), and the transport journal, which
+    makes the forensic trail durable. The agent's own probe series now runs
+    bounded; it found child.abort(context, {background:true}) by reading the
+    SDK types after the first unblock.
 ## 5. Provenance
 
 - Research trail: pi background/parallel options → pi-durable fit for the
