@@ -25,5 +25,5 @@ Read `skills/<name>/SKILL.md` when its trigger fires. `skills/README.md` is the 
   past that must be split along its module boundary, not padded. `npm run fsize`
   measures (`src/`, `tests/`, `wall/src/`, `wall/test/`, the wall's `index.html`) and
   fails over the limit; 4,000 is the warn line.
-- Secrets live in `/dev/shm` and `/run/secrets` (`/opt/pi-host/secrets` on the host) and
+- Secrets live in `/dev/shm` and `/run/secrets` (nothing secret is stored under the repo itself) and
   are never read, echoed or copied.

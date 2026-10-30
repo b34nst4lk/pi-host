@@ -49,7 +49,7 @@ services:
       # read-only bind mount below; compose `environment:` shows in docker inspect.
     volumes:
       # The repo tree: source, node_modules, and the durable ledger + workspace.
-      - /home/jacksim/hermes-users/jacksim/workspace/pi-host:/opt/pi-host
+      - /home/jacksim/hermes-users/jacksim/workspace/projects/pi-host:/opt/pi-host
       # The projects tree: multi-project cwd targets (the /project bind path from
       # inside is /opt/projects/<name>; rw — the agent builds and creates
       # worktrees there; allowlist-scoped by design).
@@ -86,7 +86,7 @@ services:
       NODE_OPTIONS: --dns-result-order=ipv4first
     volumes:
       # Same tree as pi-host, read-only: source + the durable ledger + the log.
-      - /home/jacksim/hermes-users/jacksim/workspace/pi-host:/opt/pi-host:ro
+      - /home/jacksim/hermes-users/jacksim/workspace/projects/pi-host:/opt/pi-host:ro
       - /dev/shm/pi-host:/run/secrets:ro
     tmpfs:
       - /tmp

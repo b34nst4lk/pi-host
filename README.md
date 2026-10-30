@@ -120,7 +120,7 @@ Rollback is symmetric: `docker compose -f deploy/docker-compose.yml down`, then
 - `docker pull node:26-slim` — pulls from this socket.
 - Fresh container on `home_server_home_server-network`:
   `GET http://conduit:6167/_matrix/client/versions` → `OK v1.12`.
-- Repo tree at `/home/jacksim/hermes-users/jacksim/workspace/pi-host` mounts at
+- Repo tree at `/home/jacksim/hermes-users/jacksim/workspace/projects/pi-host` mounts at
   `/opt/pi-host`; `node_modules/.bin/tsx` runs `src/` (imported
   `core/steer.ts`, `parseMatrixCommand('/usage 7d models')` returned the expected
   object) on **node v26.13.0** with tsx v4.23.15, and `vitest --run` passed 33/33
