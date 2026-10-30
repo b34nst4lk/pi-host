@@ -143,6 +143,7 @@ export const event = (room: string, text: string, id = `$evt-${Math.random().toS
 export function routerWith(state: Parameters<typeof routeRoom>[0], rooms: { main: string; project: string; other: string }) {
 	const sent: Array<{ room: string; text: string }> = [];
 	const reactions: Array<{ room: string; eventId: string }> = [];
+	const joins: Array<{ room: string }> = [];
 	const submitCalls: Array<{ conversation: ConversationId; action: string }> = [];
 	const logs: string[] = [];
 	const aborted: ConversationId[] = [];
@@ -156,6 +157,10 @@ export function routerWith(state: Parameters<typeof routeRoom>[0], rooms: { main
 				reactions.push({ room, eventId });
 				return "$r";
 			},
+		},
+		joinRoom: async (roomIdOrAlias) => {
+			joins.push({ room: roomIdOrAlias });
+			return roomIdOrAlias;
 		},
 		mainRooms: new Set([rooms.main]),
 		mainConversation: 1 as ConversationId,

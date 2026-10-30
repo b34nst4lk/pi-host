@@ -33,7 +33,7 @@ type SyncEvent = {
 };
 
 /** One sync batch: the cursor for the next call, plus fresh text events from joined rooms. */
-export type SyncBatch = { readonly nextBatch: string; readonly textEvents: TextEvent[] };
+export type SyncBatch = { readonly nextBatch: string; readonly textEvents: TextEvent[]; readonly invites: string[] };
 
 export type MatrixClient = {
 	/** Long-poll one sync batch. `since: ""` starts a new cursor. `timeoutMs: 0` returns immediately. */
@@ -70,8 +70,15 @@ export function createMatrixClient(options: MatrixClientOptions): MatrixClient {
 			throw new Error(`matrix sync rejected: HTTP ${response.status} (check MATRIX_ACCESS_TOKEN / homeserver)`);
 		}
 		if (!response.ok) throw new Error(`matrix sync failed: HTTP ${response.status}`);
-		const body = (await response.json()) as { next_batch?: string; rooms?: { join?: Record<string, { timeline?: { events?: SyncEvent[] } }> } };
+		const body = (await response.json()) as {
+			next_batch?: string;
+			rooms?: {
+				join?: Record<string, { timeline?: { events?: SyncEvent[] } }>;
+				invite?: Record<string, unknown>;
+			};
+		};
 		const textEvents: TextEvent[] = [];
+		const invites = Object.keys(body.rooms?.invite ?? {});
 		for (const [joinedRoomId, room] of Object.entries(body.rooms?.join ?? {})) {
 			for (const event of room.timeline?.events ?? []) {
 				const id = event.event_id;
@@ -81,7 +88,7 @@ export function createMatrixClient(options: MatrixClientOptions): MatrixClient {
 				}
 			}
 		}
-		return { nextBatch: body.next_batch ?? since, textEvents };
+		return { nextBatch: body.next_batch ?? since, textEvents, invites };
 	}
 
 	async function sendText(roomId: string, text: string, replyTo: EventId | null = null): Promise<string> {

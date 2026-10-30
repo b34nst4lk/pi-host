@@ -305,6 +305,7 @@ async function afterBind(outcome: ProjectOutcome): Promise<string> {
 
 const router = createRoomRouter({
 	client,
+	joinRoom: (roomIdOrAlias: string) => client.joinRoom(roomIdOrAlias),
 	mainRooms,
 	mainConversation: root.id,
 	registry: () => projectApi.projects(),
@@ -365,6 +366,7 @@ await runSyncLoop({
 		close: () => harness.close(context),
 	},
 	sync: (since, timeoutMs, signal) => client.sync(since, timeoutMs, signal),
+	joinRoom: (roomIdOrAlias: string) => client.joinRoom(roomIdOrAlias),
 	handleEvent: (event) => router.handleEvent(event),
 	seenEvents,
 	room: env.room,

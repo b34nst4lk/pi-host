@@ -66,6 +66,8 @@ export type RoomClient = {
 /** Everything the router needs; all of it injected, so the tests are fakes. */
 export type RoomRouterDeps = {
 	readonly client: RoomClient;
+	/** Accept one pending invite (mid-run /project flows deliver invites while the daemon lives). */
+	readonly joinRoom: (roomIdOrAlias: string) => Promise<string | undefined>;
 	/** The configured room, in every form it is known by (literal and resolved id). */
 	readonly mainRooms: ReadonlySet<string>;
 	/** The root conversation (pi-spike). */

@@ -35,9 +35,11 @@ export type SyncLoopDeps = {
 		since: string,
 		timeoutMs: number,
 		signal: AbortSignal,
-	) => Promise<{ nextBatch: string; textEvents: readonly TextEvent[] }>;
+	) => Promise<{ nextBatch: string; textEvents: readonly TextEvent[]; invites: readonly string[] }>;
 	/** Handle one fresh event; the router decides whether the room steers anything. */
 	readonly handleEvent: (event: TextEvent) => Promise<void>;
+	/** Accept one pending invite (the sync loop calls it once per new invite). */
+	readonly joinRoom: (roomIdOrAlias: string) => Promise<string | undefined>;
 	/** Ids this process has seen, for the in-memory half of the dedupe. */
 	readonly seenEvents: Set<string>;
 	readonly room: string;
@@ -50,6 +52,7 @@ export type SyncLoopDeps = {
 
 /** Run until SIGINT/SIGTERM; the harness is closed on the way out. */
 export async function runSyncLoop(deps: SyncLoopDeps): Promise<void> {
+	const invitesSeen = new Set<string>();
 	let durableSync: SyncState = (await deps.root.snapshot()) ?? { batch: null, seen: [] };
 	let cursor = durableSync.batch ?? "";
 	let iterations = 0;
@@ -64,6 +67,20 @@ export async function runSyncLoop(deps: SyncLoopDeps): Promise<void> {
 			try {
 				const batch = await deps.sync(cursor, iterations === 0 ? 0 : 30_000, controller.signal);
 				iterations += 1;
+				// Invites first, once per room id: a mid-run /project flow delivers the invite
+				// while the daemon is alive; joining makes the room's /project commands visible
+				// (it still steers nothing until a /project binds it — the router decides).
+				for (const inviteId of batch.invites) {
+					if (invitesSeen.has(inviteId)) continue;
+					invitesSeen.add(inviteId);
+					try {
+						const joinedId = await deps.joinRoom(inviteId);
+						deps.log(`joined new room ${joinedId ?? inviteId} (invite accepted; nothing steers until it is bound)`);
+						deps.journal(`join ok ${joinedId ?? inviteId} (invite)`);
+					} catch (error) {
+						deps.log(`join of invited room failed: ${deps.reason(error)}`);
+					}
+				}
 				const classification = classifySyncBatch(durableSync, deps.seenEvents, batch.textEvents);
 				if (classification.skipBacklog) {
 					if (batch.textEvents.length > 0) {
