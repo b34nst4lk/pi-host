@@ -51,7 +51,31 @@ state = app.update(
   new model.SpillArrived(spilled.id, fake.spill_json()),
 )[0];
 const logs = flatten(view(state));
-const html = dashboard + logs;
+// ...then the BROWSER tab: the rail, two compaction dividers, a search over every
+// conversation, and a jump to a hit in a different space than the one on screen.
+state = app.update(state, new model.TabChosen(new model.BrowserTab()))[0];
+state = app.update(state, new model.ConversationsArrived(fake.conversations_json()))[0];
+// Arriving conversations select main and ask for its stream.
+const selected = some(state.browser.selected);
+state = app.update(
+  state,
+  new model.BrowserLogsArrived(fake.browser_logs_json(selected, state.filters, 0)),
+)[0];
+state = app.update(state, new model.SearchChanged("browser"))[0];
+state = app.update(state, new model.SearchKeyed("Enter"))[0];
+state = app.update(state, new model.SearchArrived(fake.search_json("browser")))[0];
+const rail = flatten(view(state));
+const hits = list(state.browser.search.hits, (hit) => hit);
+// The last hit lives in `wall-ui`, not in the space the pane is showing.
+const hit = hits[hits.length - 1];
+state = app.update(state, new model.HitChosen(hit.conversation, hit.entry))[0];
+const landing = some(state.browser.selected);
+state = app.update(
+  state,
+  new model.BrowserLogsArrived(fake.browser_logs_json(landing, state.filters, 0)),
+)[0];
+const jumped = flatten(view(state));
+const html = dashboard + logs + rail + jumped;
 const text = html.replace(/<[^>]+>/g, " ");
 const needles = [
   "THE WALL",
@@ -80,6 +104,9 @@ const needles = [
   ">DASHBOARD<",
   "log-rows",
   "log-raw",
+  // the expanded record is indented for a human, not one long line: a space after
+  // the colon only exists because the pretty-printer put it there
+  '"kind": "pi.assistant"',
   "answered: the wall is up",
   "pi.tool-result",
   "full output · ",
@@ -87,6 +114,17 @@ const needles = [
   "older entries available",
   "search the ledger",
   "kind-assistant",
+  // round 4: the browser tab, its dividers and its jump
+  ">BROWSER<",
+  "rail-cards",
+  "space-card selected",
+  "— summarized history begins —",
+  "— summarized history continues —",
+  "log-divider",
+  "3 hits for browser",
+  "the browser tab is up",
+  "child: the browser tab renders",
+  "log-row hit",
 ];
 const missing = needles.filter((n) => !html.includes(n));
 const polylines = (html.match(/<polyline/g) || []).length;
@@ -94,10 +132,12 @@ const banner = text.includes("unexpected response shape");
 const samples = list(state.samples, (s) => s).length;
 
 const rows = (logs.match(/log-row/g) || []).length;
+const dividers = (rail.match(/log-divider/g) || []).length;
 console.log("polls:", state.polls, "| samples:", samples, "| polylines:", polylines, "| log rows:", rows);
+console.log("browser:", hits.length, "hits |", dividers, "dividers | landed on", landing);
 console.log("rendered html:", html.length, "chars");
 console.log("missing markers:", missing.length ? missing.join(", ") : "none");
 console.log("error banner:", banner);
-const pass = !missing.length && polylines >= 2 && !banner && samples === 5 && rows >= 6;
+const pass = !missing.length && polylines >= 2 && !banner && samples === 5 && rows >= 6 && dividers === 2;
 console.log(pass ? "SMOKE PASS" : "SMOKE FAIL");
 if (!pass) process.exitCode = 1;

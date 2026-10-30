@@ -1,4 +1,4 @@
-// The wall's HTTP surface: five JSON endpoints and the built UI, on one port.
+// The wall's HTTP surface: seven JSON endpoints and the built UI, on one port.
 //
 // Rules the rest of the system relies on (wall/CONTRACT.md):
 //  * `/api/*` is always JSON, even on failure — `{"v":1,"ok":false,"error":"…"}`;
@@ -11,8 +11,10 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import {
+	type ConversationsReport,
 	type HealthReport,
 	type LogsReport,
+	type SearchReport,
 	type SpillReport,
 	type StateReport,
 	VERSION,
@@ -20,7 +22,7 @@ import {
 	isoNow,
 } from "./contract.ts";
 import { oneLine, type Ledger } from "./ledger.ts";
-import { DEFAULT_SPILL_ROOTS, parseLogsQuery, readSpill } from "./logs.ts";
+import { DEFAULT_SPILL_ROOTS, parseLogsQuery, parseSearchQuery, readSpill } from "./logs.ts";
 import type { SpendReader } from "./spend.ts";
 
 export type WallServerOptions = {
@@ -90,8 +92,19 @@ export function createHandler(options: WallServerOptions) {
 				case "/api/logs": {
 					// Additive in v1: `/api/state` and `/api/spend` do not change. Junk params
 					// are clamped, never rejected — the tail must keep working while someone
-					// fiddles with the URL by hand.
+					// fiddles with the URL by hand. The one exception is a conversation id the
+					// ledger does not have: that is a client mistake, and an empty page would
+					// look like an empty conversation.
 					const query = parseLogsQuery(url.searchParams);
+					if (query.conversation !== null && options.ledger.conversationExists(query.conversation) === false) {
+						sendJson(
+							response,
+							400,
+							failure(`no such conversation ${query.conversation}`),
+							method === "HEAD",
+						);
+						return;
+					}
 					const page = options.ledger.logs(query);
 					const report: LogsReport = {
 						v: VERSION,
@@ -101,6 +114,43 @@ export function createHandler(options: WallServerOptions) {
 						entries: page.entries,
 					};
 					if (page.next_before !== null) report.next_before = page.next_before;
+					sendJson(response, 200, report, method === "HEAD");
+					return;
+				}
+				case "/api/conversations": {
+					// The picker's data: one row per space, carrying the same state enum the
+					// dashboard's AGENTS card uses. 200 even when `ok:false` — the tab shows the
+					// error above an empty rail rather than failing to load.
+					const result = options.ledger.conversations();
+					const report: ConversationsReport = {
+						v: VERSION,
+						ok: result.error === null,
+						error: result.error,
+						generated_at: isoNow(now()),
+						conversations: result.conversations,
+					};
+					sendJson(response, 200, report, method === "HEAD");
+					return;
+				}
+				case "/api/search": {
+					// Cross-conversation, one page, no cursor. An empty `q` is the one
+					// rejection: "search for nothing" is not a query, and answering it with
+					// every entry in the ledger would misreport the result count.
+					const query = parseSearchQuery(url.searchParams);
+					if (query.q.length === 0) {
+						sendJson(response, 400, failure("q is required"), method === "HEAD");
+						return;
+					}
+					const result = options.ledger.search(query);
+					const report: SearchReport = {
+						v: VERSION,
+						ok: result.error === null,
+						error: result.error,
+						generated_at: isoNow(now()),
+						hits: result.hits,
+						limit: query.limit,
+						q: query.q,
+					};
 					sendJson(response, 200, report, method === "HEAD");
 					return;
 				}

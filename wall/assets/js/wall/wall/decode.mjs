@@ -53,6 +53,49 @@ export const LogsPage$LogsPage$2 = (value) => value.entries;
 export const LogsPage$LogsPage$next_before = (value) => value.next_before;
 export const LogsPage$LogsPage$3 = (value) => value.next_before;
 
+export class ConversationsPage extends $CustomType {
+  constructor(ok, error, items) {
+    super();
+    this.ok = ok;
+    this.error = error;
+    this.items = items;
+  }
+}
+export const ConversationsPage$ConversationsPage = (ok, error, items) =>
+  new ConversationsPage(ok, error, items);
+export const ConversationsPage$isConversationsPage = (value) =>
+  value instanceof ConversationsPage;
+export const ConversationsPage$ConversationsPage$ok = (value) => value.ok;
+export const ConversationsPage$ConversationsPage$0 = (value) => value.ok;
+export const ConversationsPage$ConversationsPage$error = (value) => value.error;
+export const ConversationsPage$ConversationsPage$1 = (value) => value.error;
+export const ConversationsPage$ConversationsPage$items = (value) => value.items;
+export const ConversationsPage$ConversationsPage$2 = (value) => value.items;
+
+export class SearchPage extends $CustomType {
+  constructor(ok, error, q, limit, hits) {
+    super();
+    this.ok = ok;
+    this.error = error;
+    this.q = q;
+    this.limit = limit;
+    this.hits = hits;
+  }
+}
+export const SearchPage$SearchPage = (ok, error, q, limit, hits) =>
+  new SearchPage(ok, error, q, limit, hits);
+export const SearchPage$isSearchPage = (value) => value instanceof SearchPage;
+export const SearchPage$SearchPage$ok = (value) => value.ok;
+export const SearchPage$SearchPage$0 = (value) => value.ok;
+export const SearchPage$SearchPage$error = (value) => value.error;
+export const SearchPage$SearchPage$1 = (value) => value.error;
+export const SearchPage$SearchPage$q = (value) => value.q;
+export const SearchPage$SearchPage$2 = (value) => value.q;
+export const SearchPage$SearchPage$limit = (value) => value.limit;
+export const SearchPage$SearchPage$3 = (value) => value.limit;
+export const SearchPage$SearchPage$hits = (value) => value.hits;
+export const SearchPage$SearchPage$4 = (value) => value.hits;
+
 /**
  * One line, no stack: the model renders this in the error banner.
  * 
@@ -744,4 +787,225 @@ export function spill(body) {
     let problem = $[0];
     return new Error(bad_shape(problem));
   }
+}
+
+/**
+ * `field_or`, but a *wrong-typed* value falls back to the default too. The
+ * reader and the wall are written by the same hand, so a type mismatch is a
+ * bug — and a bug in one row must not blank a whole rail or jump list. Reserved
+ * for the round-four shapes: a page whose rows cannot be read at all is still an
+ * error, and still a banner rather than a crash.
+ * 
+ * @ignore
+ */
+function tolerant(name, default$, inner, next) {
+  let _pipe = $decode.one_of(
+    $decode.field(name, inner, $decode.success),
+    listPrepend($decode.success(default$), $List$Empty$const),
+  );
+  return $decode.then$(_pipe, next);
+}
+
+function tolerant_optional(name, inner, next) {
+  return tolerant(name, Option$None$const, inner, next);
+}
+
+/**
+ * A space whose `kind` or `state` drifted renders as `unknown` — a card that
+ * says it does not know beats a card that says the wrong thing. The fields go
+ * through `tolerant`, so *any* shape drift on one space (a missing key, a string
+ * where a number belongs, a new enum word) costs that one field, not the rail.
+ * 
+ * @ignore
+ */
+function conversation_decoder() {
+  return tolerant(
+    "id",
+    0,
+    $decode.int,
+    (id) => {
+      return tolerant(
+        "kind",
+        "unknown",
+        $decode.string,
+        (kind) => {
+          return tolerant(
+            "title",
+            "unknown",
+            $decode.string,
+            (title) => {
+              return tolerant(
+                "state",
+                "unknown",
+                $decode.string,
+                (state) => {
+                  return tolerant(
+                    "entries",
+                    0,
+                    $decode.int,
+                    (entries) => {
+                      return tolerant_optional(
+                        "first_at",
+                        $decode.optional($decode.string),
+                        (first_at) => {
+                          return tolerant_optional(
+                            "last_at",
+                            $decode.optional($decode.string),
+                            (last_at) => {
+                              return $decode.success(
+                                new $model.Conversation(
+                                  id,
+                                  kind,
+                                  title,
+                                  state,
+                                  entries,
+                                  first_at,
+                                  last_at,
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      );
+                    },
+                  );
+                },
+              );
+            },
+          );
+        },
+      );
+    },
+  );
+}
+
+function conversations_decoder() {
+  return field_or(
+    "ok",
+    true,
+    $decode.bool,
+    (ok) => {
+      return $decode.optional_field(
+        "error",
+        Option$None$const,
+        $decode.optional($decode.string),
+        (problem) => {
+          return $decode.optional_field(
+            "conversations",
+            $List$Empty$const,
+            $decode.list(conversation_decoder()),
+            (items) => {
+              return $decode.success(new ConversationsPage(ok, problem, items));
+            },
+          );
+        },
+      );
+    },
+  );
+}
+
+export function conversations(body) {
+  let _pipe = $json.parse(body, conversations_decoder());
+  return $result.map_error(_pipe, bad_shape);
+}
+
+/**
+ * A hit without a conversation id cannot be jumped to, so it decodes to `None`
+ * and the row stays visible but inert.
+ * 
+ * @ignore
+ */
+function search_hit_decoder() {
+  return tolerant_optional(
+    "conversation_id",
+    $decode.optional($decode.int),
+    (conversation) => {
+      return tolerant(
+        "conversation_title",
+        "unknown",
+        $decode.string,
+        (title) => {
+          return tolerant(
+            "entry_id",
+            0,
+            $decode.int,
+            (entry) => {
+              return tolerant(
+                "kind",
+                "unknown",
+                $decode.string,
+                (kind) => {
+                  return tolerant_optional(
+                    "at",
+                    $decode.optional($decode.string),
+                    (at) => {
+                      return tolerant(
+                        "text",
+                        "unknown entry",
+                        $decode.string,
+                        (text) => {
+                          return $decode.success(
+                            new $model.SearchHit(
+                              conversation,
+                              title,
+                              entry,
+                              kind,
+                              at,
+                              text,
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  );
+                },
+              );
+            },
+          );
+        },
+      );
+    },
+  );
+}
+
+function search_decoder() {
+  return field_or(
+    "ok",
+    true,
+    $decode.bool,
+    (ok) => {
+      return $decode.optional_field(
+        "error",
+        Option$None$const,
+        $decode.optional($decode.string),
+        (problem) => {
+          return optional_string(
+            "q",
+            (q) => {
+              return optional_int(
+                "limit",
+                (limit) => {
+                  return $decode.optional_field(
+                    "hits",
+                    $List$Empty$const,
+                    $decode.list(search_hit_decoder()),
+                    (hits) => {
+                      return $decode.success(
+                        new SearchPage(ok, problem, q, limit, hits),
+                      );
+                    },
+                  );
+                },
+              );
+            },
+          );
+        },
+      );
+    },
+  );
+}
+
+export function search(body) {
+  let _pipe = $json.parse(body, search_decoder());
+  return $result.map_error(_pipe, bad_shape);
 }

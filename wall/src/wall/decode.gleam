@@ -271,3 +271,117 @@ fn spill_decoder() -> decode.Decoder(#(Bool, Option(String), Option(String))) {
   use text <- decode.optional_field("text", None, decode.optional(decode.string))
   decode.success(#(ok, problem, text))
 }
+
+// --- round four: the picker and the jump list ------------------------------
+
+/// One `/api/conversations` answer. Same shape as `LogsPage`: `ok:false` is a
+/// ledger the reader could not read, and it is rendered, not thrown.
+pub type ConversationsPage {
+  ConversationsPage(
+    ok: Bool,
+    error: Option(String),
+    items: List(model.Conversation),
+  )
+}
+
+pub fn conversations(body: String) -> Result(ConversationsPage, String) {
+  json.parse(body, using: conversations_decoder())
+  |> result.map_error(bad_shape)
+}
+
+fn conversations_decoder() -> decode.Decoder(ConversationsPage) {
+  use ok <- field_or("ok", True, decode.bool)
+  use problem <- decode.optional_field("error", None, decode.optional(decode.string))
+  use items <- decode.optional_field("conversations", [], decode.list(conversation_decoder()))
+  decode.success(ConversationsPage(ok: ok, error: problem, items: items))
+}
+
+/// A space whose `kind` or `state` drifted renders as `unknown` — a card that
+/// says it does not know beats a card that says the wrong thing. The fields go
+/// through `tolerant`, so *any* shape drift on one space (a missing key, a string
+/// where a number belongs, a new enum word) costs that one field, not the rail.
+fn conversation_decoder() -> decode.Decoder(model.Conversation) {
+  use id <- tolerant("id", 0, decode.int)
+  use kind <- tolerant("kind", "unknown", decode.string)
+  use title <- tolerant("title", "unknown", decode.string)
+  use state <- tolerant("state", "unknown", decode.string)
+  use entries <- tolerant("entries", 0, decode.int)
+  use first_at <- tolerant_optional("first_at", decode.optional(decode.string))
+  use last_at <- tolerant_optional("last_at", decode.optional(decode.string))
+  decode.success(model.Conversation(
+    id: id,
+    kind: kind,
+    title: title,
+    state: state,
+    entries: entries,
+    first_at: first_at,
+    last_at: last_at,
+  ))
+}
+
+/// One `/api/search` answer.
+pub type SearchPage {
+  SearchPage(
+    ok: Bool,
+    error: Option(String),
+    q: Option(String),
+    limit: Option(Int),
+    hits: List(model.SearchHit),
+  )
+}
+
+pub fn search(body: String) -> Result(SearchPage, String) {
+  json.parse(body, using: search_decoder())
+  |> result.map_error(bad_shape)
+}
+
+fn search_decoder() -> decode.Decoder(SearchPage) {
+  use ok <- field_or("ok", True, decode.bool)
+  use problem <- decode.optional_field("error", None, decode.optional(decode.string))
+  use q <- optional_string("q")
+  use limit <- optional_int("limit")
+  use hits <- decode.optional_field("hits", [], decode.list(search_hit_decoder()))
+  decode.success(SearchPage(ok: ok, error: problem, q: q, limit: limit, hits: hits))
+}
+
+/// A hit without a conversation id cannot be jumped to, so it decodes to `None`
+/// and the row stays visible but inert.
+fn search_hit_decoder() -> decode.Decoder(model.SearchHit) {
+  use conversation <- tolerant_optional("conversation_id", decode.optional(decode.int))
+  use title <- tolerant("conversation_title", "unknown", decode.string)
+  use entry <- tolerant("entry_id", 0, decode.int)
+  use kind <- tolerant("kind", "unknown", decode.string)
+  use at <- tolerant_optional("at", decode.optional(decode.string))
+  use text <- tolerant("text", "unknown entry", decode.string)
+  decode.success(model.SearchHit(
+    conversation: conversation,
+    conversation_title: title,
+    entry: entry,
+    kind: kind,
+    at: at,
+    text: text,
+  ))
+}
+
+/// `field_or`, but a *wrong-typed* value falls back to the default too. The
+/// reader and the wall are written by the same hand, so a type mismatch is a
+/// bug — and a bug in one row must not blank a whole rail or jump list. Reserved
+/// for the round-four shapes: a page whose rows cannot be read at all is still an
+/// error, and still a banner rather than a crash.
+fn tolerant(
+  name: String,
+  default: a,
+  inner: decode.Decoder(a),
+  next: fn(a) -> decode.Decoder(b),
+) -> decode.Decoder(b) {
+  decode.one_of(decode.field(name, inner, decode.success), [decode.success(default)])
+  |> decode.then(next)
+}
+
+fn tolerant_optional(
+  name: String,
+  inner: decode.Decoder(Option(a)),
+  next: fn(Option(a)) -> decode.Decoder(b),
+) -> decode.Decoder(b) {
+  tolerant(name, None, inner, next)
+}

@@ -289,3 +289,61 @@ export type SpillReport = {
 	truncated: boolean;
 	text: string | null;
 };
+
+// --- conversations: the spaces the ledger holds ----------------------------
+
+/** `main` is the conversation nothing owns (`owner_conversation_id is null`). */
+export type ConversationKind = "main" | "child";
+
+/**
+ * One row of the conversation picker. `state` is the *same* enum the agent cards
+ * use — deliberately not re-derived here: a conversation is a space, and the enum
+ * already says what is happening inside it.
+ */
+export type ConversationSummary = {
+	id: number;
+	kind: ConversationKind;
+	/** `main` for the root, the registry (or anchor) name for a child, else `conversation <id>`. */
+	title: string;
+	state: AgentStateValue;
+	entries: number;
+	/** First and last entry timestamps in this conversation; `null` when unknown. */
+	first_at: string | null;
+	last_at: string | null;
+};
+
+export type ConversationsReport = {
+	v: typeof VERSION;
+	ok: boolean;
+	error: string | null;
+	generated_at: string;
+	/** Main first, then children in id order. */
+	conversations: ConversationSummary[];
+};
+
+// --- search: one query over every conversation ----------------------------
+
+/**
+ * One match. `text` is the same human line `/api/logs` renders for the record (the
+ * wall shows the line, not a snippet with the match cut out of it), and
+ * `conversation_title` is the picker's title, so a hit says where it lives.
+ */
+export type SearchHit = {
+	conversation_id: number | null;
+	conversation_title: string;
+	entry_id: number;
+	kind: string;
+	at: string | null;
+	text: string;
+};
+
+export type SearchReport = {
+	v: typeof VERSION;
+	ok: boolean;
+	error: string | null;
+	generated_at: string;
+	/** Newest first, at most `limit`. */
+	hits: SearchHit[];
+	limit: number;
+	q: string;
+};

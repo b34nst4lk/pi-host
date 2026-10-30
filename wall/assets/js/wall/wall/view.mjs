@@ -2,7 +2,7 @@ import * as $float from "../../gleam_stdlib/gleam/float.mjs";
 import * as $int from "../../gleam_stdlib/gleam/int.mjs";
 import * as $list from "../../gleam_stdlib/gleam/list.mjs";
 import * as $option from "../../gleam_stdlib/gleam/option.mjs";
-import { Some, Option$None$const } from "../../gleam_stdlib/gleam/option.mjs";
+import { None, Some, Option$None$const } from "../../gleam_stdlib/gleam/option.mjs";
 import * as $string from "../../gleam_stdlib/gleam/string.mjs";
 import * as $attribute from "../../lustre/lustre/attribute.mjs";
 import * as $element from "../../lustre/lustre/element.mjs";
@@ -19,6 +19,7 @@ import {
   isEqual,
 } from "../gleam.mjs";
 import * as $model from "../wall/model.mjs";
+import * as $pretty from "../wall/pretty.mjs";
 
 function footer(current) {
   return $html.footer(
@@ -100,9 +101,24 @@ function kind_class(kind) {
   }
 }
 
-function log_row(logs, entry) {
+/**
+ * The row a search hit landed on is marked: landing in a window of ±25 is only
+ * useful if you can see which one you asked for.
+ * 
+ * @ignore
+ */
+function row_class(options, entry) {
+  let $ = $model.is_anchor(options, entry);
+  if ($) {
+    return "log-row hit";
+  } else {
+    return "log-row";
+  }
+}
+
+function log_row(logs, entry, options) {
   return $html.details(
-    listPrepend($attribute.class$("log-row"), $List$Empty$const),
+    listPrepend($attribute.class$(row_class(options, entry)), $List$Empty$const),
     listPrepend(
       $html.summary(
         listPrepend($attribute.class$("log-head"), $List$Empty$const),
@@ -140,7 +156,23 @@ function log_row(logs, entry) {
                   listPrepend($attribute.class$("log-text"), $List$Empty$const),
                   listPrepend(text(entry.text), $List$Empty$const),
                 ),
-                $List$Empty$const,
+                listPrepend(
+                  (() => {
+                    let $ = $model.is_anchor(options, entry);
+                    if ($) {
+                      return $html.span(
+                        listPrepend(
+                          $attribute.class$("log-hit"),
+                          $List$Empty$const,
+                        ),
+                        listPrepend(text("hit"), $List$Empty$const),
+                      );
+                    } else {
+                      return element_none();
+                    }
+                  })(),
+                  $List$Empty$const,
+                ),
               ),
             ),
           ),
@@ -149,7 +181,7 @@ function log_row(logs, entry) {
       listPrepend(
         $html.pre(
           listPrepend($attribute.class$("log-raw"), $List$Empty$const),
-          listPrepend(text(entry.raw), $List$Empty$const),
+          listPrepend(text($pretty.json(entry.raw)), $List$Empty$const),
         ),
         listPrepend(spill_block(logs, entry), $List$Empty$const),
       ),
@@ -157,7 +189,80 @@ function log_row(logs, entry) {
   );
 }
 
-function log_rows(logs) {
+/**
+ * A compaction boundary: a full-width rule with the summary one click away. The
+ * entries on either side stay in the same list, in the same order.
+ * 
+ * @ignore
+ */
+function divider_row(entry, seen) {
+  return $html.div(
+    listPrepend($attribute.class$("log-divider"), $List$Empty$const),
+    listPrepend(
+      $html.span(
+        listPrepend($attribute.class$("divider-rule"), $List$Empty$const),
+        listPrepend(text($model.divider_label(seen)), $List$Empty$const),
+      ),
+      listPrepend(
+        $html.details(
+          listPrepend($attribute.class$("divider-summary"), $List$Empty$const),
+          listPrepend(
+            $html.summary(
+              listPrepend($attribute.class$("divider-head"), $List$Empty$const),
+              listPrepend(
+                text("summary · " + $model.short_time(entry.at)),
+                $List$Empty$const,
+              ),
+            ),
+            listPrepend(
+              $html.pre(
+                listPrepend($attribute.class$("log-raw"), $List$Empty$const),
+                listPrepend(text($pretty.json(entry.raw)), $List$Empty$const),
+              ),
+              $List$Empty$const,
+            ),
+          ),
+        ),
+        listPrepend(
+          $html.span(
+            listPrepend($attribute.class$("divider-rule"), $List$Empty$const),
+            $List$Empty$const,
+          ),
+          $List$Empty$const,
+        ),
+      ),
+    ),
+  );
+}
+
+/**
+ * The one place rows and dividers are interleaved, so LOGS and the browser pane
+ * cannot drift apart. The fold carries how many compaction dividers have been
+ * drawn so far: the first one says history *begins*, later ones say it
+ * *continues*, and nothing above or below is collapsed.
+ * 
+ * @ignore
+ */
+function stream_rows(logs, entries, options) {
+  let $ = $list.fold(
+    entries,
+    [$List$Empty$const, 0],
+    (state, entry) => {
+      let done = state[0];
+      let seen = state[1];
+      let $1 = options.dividers && $model.is_divider(entry.kind);
+      if ($1) {
+        return [listPrepend(divider_row(entry, seen), done), seen + 1];
+      } else {
+        return [listPrepend(log_row(logs, entry, options), done), seen];
+      }
+    },
+  );
+  let rendered = $[0];
+  return $list.reverse(rendered);
+}
+
+function log_rows(logs, options) {
   let $ = logs.entries;
   if ($ instanceof $Empty) {
     return $html.p(
@@ -168,9 +273,402 @@ function log_rows(logs) {
     let entries = $;
     return $html.div(
       listPrepend($attribute.class$("log-rows"), $List$Empty$const),
-      $list.map(entries, (entry) => { return log_row(logs, entry); }),
+      stream_rows(logs, entries, options),
     );
   }
+}
+
+function pane_title(browser) {
+  let $ = $model.selected_conversation(browser);
+  if ($ instanceof Some) {
+    let item = $[0];
+    return (item.title + " · ") + $model.agent_state_label(item.state);
+  } else {
+    return "select a space";
+  }
+}
+
+function or_default_logs(logs) {
+  if (logs instanceof Some) {
+    let logs$1 = logs[0];
+    return logs$1;
+  } else {
+    return $model.empty_logs();
+  }
+}
+
+function browser_pane(browser) {
+  let logs = or_default_logs(browser.stream);
+  return $html.div(
+    listPrepend($attribute.class$("pane"), $List$Empty$const),
+    listPrepend(
+      $html.div(
+        listPrepend($attribute.class$("pane-head"), $List$Empty$const),
+        listPrepend(
+          $html.h2(
+            listPrepend($attribute.class$("pane-title"), $List$Empty$const),
+            listPrepend(text(pane_title(browser)), $List$Empty$const),
+          ),
+          listPrepend(
+            (() => {
+              let $ = browser.anchor;
+              if ($ instanceof Some) {
+                return $html.button(
+                  listPrepend(
+                    $attribute.attribute("type", "button"),
+                    listPrepend(
+                      $attribute.class$("older"),
+                      listPrepend(
+                        $event.on_click($model.Msg$BrowserTailRequested$const),
+                        $List$Empty$const,
+                      ),
+                    ),
+                  ),
+                  listPrepend(text("back to the tail"), $List$Empty$const),
+                );
+              } else {
+                return element_none();
+              }
+            })(),
+            listPrepend(
+              $html.span(
+                listPrepend($attribute.class$("log-line"), $List$Empty$const),
+                listPrepend(text($model.logs_line(logs)), $List$Empty$const),
+              ),
+              $List$Empty$const,
+            ),
+          ),
+        ),
+      ),
+      listPrepend(
+        (() => {
+          let $ = logs.error;
+          if ($ instanceof Some) {
+            let problem = $[0];
+            return $html.p(
+              listPrepend($attribute.class$("banner"), $List$Empty$const),
+              listPrepend(text(problem), $List$Empty$const),
+            );
+          } else {
+            return element_none();
+          }
+        })(),
+        listPrepend(
+          log_rows(logs, $model.browser_options(browser.anchor)),
+          listPrepend(
+            (() => {
+              let $ = logs.next_before;
+              if ($ instanceof Some) {
+                return $html.p(
+                  listPrepend($attribute.class$("muted"), $List$Empty$const),
+                  listPrepend(
+                    text("older entries available"),
+                    $List$Empty$const,
+                  ),
+                );
+              } else {
+                return element_none();
+              }
+            })(),
+            $List$Empty$const,
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+/**
+ * One space: title, the same state badge the AGENTS card uses, how many entries
+ * it holds and when it ran. The main conversation is pinned first by
+ * `model.order_conversations`.
+ * 
+ * @ignore
+ */
+function conversation_card(browser, item) {
+  return $html.button(
+    listPrepend(
+      $attribute.attribute("type", "button"),
+      listPrepend(
+        $attribute.class$($model.space_class(browser.selected, item.id)),
+        listPrepend(
+          $event.on_click(new $model.ConversationChosen(item.id)),
+          $List$Empty$const,
+        ),
+      ),
+    ),
+    listPrepend(
+      $html.span(
+        listPrepend($attribute.class$("space-head"), $List$Empty$const),
+        listPrepend(
+          $html.span(
+            listPrepend($attribute.class$("space-title"), $List$Empty$const),
+            listPrepend(text(item.title), $List$Empty$const),
+          ),
+          listPrepend(
+            $html.span(
+              listPrepend(
+                $attribute.class$($model.agent_state_class(item.state)),
+                $List$Empty$const,
+              ),
+              listPrepend(
+                text($model.agent_state_label(item.state)),
+                $List$Empty$const,
+              ),
+            ),
+            $List$Empty$const,
+          ),
+        ),
+      ),
+      listPrepend(
+        $html.span(
+          listPrepend($attribute.class$("space-meta"), $List$Empty$const),
+          listPrepend(text($model.conversation_line(item)), $List$Empty$const),
+        ),
+        listPrepend(
+          $html.span(
+            listPrepend($attribute.class$("space-meta"), $List$Empty$const),
+            listPrepend(text($model.conversation_span(item)), $List$Empty$const),
+          ),
+          $List$Empty$const,
+        ),
+      ),
+    ),
+  );
+}
+
+function conversation_rail(browser) {
+  return $html.div(
+    listPrepend($attribute.class$("rail"), $List$Empty$const),
+    listPrepend(
+      $html.p(
+        listPrepend($attribute.class$("rail-head"), $List$Empty$const),
+        listPrepend(text("spaces"), $List$Empty$const),
+      ),
+      listPrepend(
+        (() => {
+          let $ = browser.conversations_error;
+          if ($ instanceof Some) {
+            let problem = $[0];
+            return $html.p(
+              listPrepend($attribute.class$("banner"), $List$Empty$const),
+              listPrepend(text(problem), $List$Empty$const),
+            );
+          } else {
+            return element_none();
+          }
+        })(),
+        listPrepend(
+          (() => {
+            let $ = $model.order_conversations(browser.conversations);
+            if ($ instanceof $Empty) {
+              return $html.p(
+                listPrepend($attribute.class$("muted"), $List$Empty$const),
+                listPrepend(text("no conversations yet"), $List$Empty$const),
+              );
+            } else {
+              let items = $;
+              return $html.div(
+                listPrepend($attribute.class$("rail-cards"), $List$Empty$const),
+                $list.map(
+                  items,
+                  (item) => { return conversation_card(browser, item); },
+                ),
+              );
+            }
+          })(),
+          $List$Empty$const,
+        ),
+      ),
+    ),
+  );
+}
+
+/**
+ * A hit line is one line: the full text is in the row you land on.
+ * 
+ * @ignore
+ */
+function clip(text, limit) {
+  let $ = $string.length(text) > limit;
+  if ($) {
+    return $string.slice(text, 0, limit) + "…";
+  } else {
+    return text;
+  }
+}
+
+/**
+ * One hit: which space, when, which kind, and the matched line. Clicking it
+ * selects that space and opens a window around the entry.
+ * 
+ * @ignore
+ */
+function hit_row(hit) {
+  return $html.button(
+    listPrepend(
+      $attribute.attribute("type", "button"),
+      listPrepend(
+        $attribute.class$("hit"),
+        listPrepend(
+          $event.on_click(new $model.HitChosen(hit.conversation, hit.entry)),
+          $List$Empty$const,
+        ),
+      ),
+    ),
+    listPrepend(
+      $html.span(
+        listPrepend($attribute.class$("hit-space"), $List$Empty$const),
+        listPrepend(text(hit.conversation_title), $List$Empty$const),
+      ),
+      listPrepend(
+        $html.span(
+          listPrepend($attribute.class$("hit-at"), $List$Empty$const),
+          listPrepend(text($model.short_stamp(hit.at)), $List$Empty$const),
+        ),
+        listPrepend(
+          $html.span(
+            listPrepend(
+              $attribute.class$("log-kind " + kind_class(hit.kind)),
+              $List$Empty$const,
+            ),
+            listPrepend(text(hit.kind), $List$Empty$const),
+          ),
+          listPrepend(
+            $html.span(
+              listPrepend($attribute.class$("hit-text"), $List$Empty$const),
+              listPrepend(text(clip(hit.text, 160)), $List$Empty$const),
+            ),
+            $List$Empty$const,
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+function browser_hits(search) {
+  let $ = search.asked;
+  let $1 = search.hits;
+  let $2 = search.error;
+  if ($1 instanceof $Empty && $2 instanceof None && $ === "") {
+    return element_none();
+  } else {
+    return $html.div(
+      listPrepend($attribute.class$("hits"), $List$Empty$const),
+      listPrepend(
+        (() => {
+          let $3 = search.error;
+          if ($3 instanceof Some) {
+            let problem = $3[0];
+            return $html.p(
+              listPrepend($attribute.class$("banner"), $List$Empty$const),
+              listPrepend(text(problem), $List$Empty$const),
+            );
+          } else {
+            return element_none();
+          }
+        })(),
+        listPrepend(
+          $html.div(
+            listPrepend($attribute.class$("hit-rows"), $List$Empty$const),
+            $list.map(search.hits, hit_row),
+          ),
+          $List$Empty$const,
+        ),
+      ),
+    );
+  }
+}
+
+function browser_search(search) {
+  return $html.div(
+    listPrepend(
+      $attribute.class$("log-controls browser-search"),
+      $List$Empty$const,
+    ),
+    listPrepend(
+      $html.input(
+        listPrepend(
+          $attribute.attribute("type", "search"),
+          listPrepend(
+            $attribute.attribute(
+              "placeholder",
+              "search every conversation — enter",
+            ),
+            listPrepend(
+              $attribute.attribute("value", search.query),
+              listPrepend(
+                $attribute.class$("search"),
+                listPrepend(
+                  $event.on_input(
+                    (var0) => { return new $model.SearchChanged(var0); },
+                  ),
+                  listPrepend(
+                    $event.on_keydown(
+                      (var0) => { return new $model.SearchKeyed(var0); },
+                    ),
+                    $List$Empty$const,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+      listPrepend(
+        $html.button(
+          listPrepend(
+            $attribute.attribute("type", "button"),
+            listPrepend(
+              $attribute.class$("older"),
+              listPrepend(
+                $event.on_click($model.Msg$SearchSubmitted$const),
+                $List$Empty$const,
+              ),
+            ),
+          ),
+          listPrepend(text("search"), $List$Empty$const),
+        ),
+        listPrepend(
+          $html.span(
+            listPrepend($attribute.class$("log-line"), $List$Empty$const),
+            listPrepend(text($model.search_line(search)), $List$Empty$const),
+          ),
+          $List$Empty$const,
+        ),
+      ),
+    ),
+  );
+}
+
+/**
+ * Search box on top, jump list under it, then rail + pane. The search is over
+ * every conversation, so a hit can be in a space that is not the one on screen.
+ * 
+ * @ignore
+ */
+function browser_tab(current) {
+  let browser = current.browser;
+  return $html.section(
+    listPrepend($attribute.class$("browser"), $List$Empty$const),
+    listPrepend(
+      browser_search(browser.search),
+      listPrepend(
+        browser_hits(browser.search),
+        listPrepend(
+          $html.div(
+            listPrepend($attribute.class$("browser-body"), $List$Empty$const),
+            listPrepend(
+              conversation_rail(browser),
+              listPrepend(browser_pane(browser), $List$Empty$const),
+            ),
+          ),
+          $List$Empty$const,
+        ),
+      ),
+    ),
+  );
 }
 
 function chip_class(active) {
@@ -200,15 +698,6 @@ function kind_chips(filters) {
       );
     },
   );
-}
-
-function or_default_logs(logs) {
-  if (logs instanceof Some) {
-    let logs$1 = logs[0];
-    return logs$1;
-  } else {
-    return $model.empty_logs();
-  }
 }
 
 /**
@@ -328,7 +817,7 @@ function logs_tab(current) {
             }
           })(),
           listPrepend(
-            log_rows(logs),
+            log_rows(logs, $model.log_options()),
             listPrepend(
               (() => {
                 let $ = logs.next_before;
@@ -1047,7 +1536,10 @@ function header(current) {
           $list.map(
             listPrepend(
               $model.Tab$Dashboard$const,
-              listPrepend($model.Tab$LogsTab$const, $List$Empty$const),
+              listPrepend(
+                $model.Tab$LogsTab$const,
+                listPrepend($model.Tab$BrowserTab$const, $List$Empty$const),
+              ),
             ),
             (tab) => {
               return $html.button(
@@ -1093,8 +1585,10 @@ export function view(current) {
             let $ = current.tab;
             if ($ instanceof $model.Dashboard) {
               return dashboard(current);
-            } else {
+            } else if ($ instanceof $model.LogsTab) {
               return logs_tab(current);
+            } else {
+              return browser_tab(current);
             }
           })(),
           listPrepend(footer(current), $List$Empty$const),

@@ -2,9 +2,13 @@
 //// clock reads — everything the view needs is already in the model, which is why
 //// `gleeunit` can assert on strings this module produces.
 ////
-//// Layout: a header with two tabs, an optional error banner, then either the
-//// two-by-two grid of VITALS / SPEND / AGENTS / QUEUE or the full-width LOGS
-//// browser. One view function, so a tab switch is one message and no reload.
+//// Layout: a header with three tabs, an optional error banner, then either the
+//// two-by-two grid of VITALS / SPEND / AGENTS / QUEUE, the full-width LOGS tail,
+//// or the BROWSER: a conversation rail on the left, the selected space's stream
+//// on the right, and a jump list over both. One view function, so a tab switch is
+//// one message and no reload. LOGS and the browser's pane render rows with the
+//// same `log_rows`, so the expanders, the spill reader and the pretty record are
+//// one code path; the browser passes `RowOptions(dividers: True, anchor: …)`.
 
 import gleam/float
 import gleam/int
@@ -17,6 +21,7 @@ import lustre/element/html
 import lustre/event
 import lustre/element/svg
 import wall/model
+import wall/pretty
 
 pub fn view(current: model.Model) -> Element(model.Msg) {
   html.div([attribute.class("wall")], [
@@ -25,6 +30,7 @@ pub fn view(current: model.Model) -> Element(model.Msg) {
     case current.tab {
       model.Dashboard -> dashboard(current)
       model.LogsTab -> logs_tab(current)
+      model.BrowserTab -> browser_tab(current)
     },
     footer(current),
   ])
@@ -44,7 +50,7 @@ fn header(current: model.Model) -> Element(model.Msg) {
     html.h1([attribute.class("title")], [text("THE WALL")]),
     html.nav(
       [attribute.class("tabs")],
-      list.map([model.Dashboard, model.LogsTab], fn(tab) {
+      list.map([model.Dashboard, model.LogsTab, model.BrowserTab], fn(tab) {
         html.button(
           [
             attribute.attribute("type", "button"),
@@ -431,7 +437,7 @@ fn logs_tab(current: model.Model) -> Element(model.Msg) {
       Some(problem) -> html.p([attribute.class("banner")], [text(problem)])
       None -> element_none()
     },
-    log_rows(logs),
+    log_rows(logs, model.log_options()),
     case logs.next_before {
       Some(_) -> html.p([attribute.class("muted")], [text("older entries available")])
       None -> element_none()
@@ -459,18 +465,54 @@ fn chip_class(active: Bool) -> String {
   }
 }
 
-fn log_rows(logs: model.Logs) -> Element(model.Msg) {
+fn log_rows(logs: model.Logs, options: model.RowOptions) -> Element(model.Msg) {
   case logs.entries {
     [] -> html.p([attribute.class("muted")], [text("no entries match")])
     entries ->
-      html.div([attribute.class("log-rows")], list.map(entries, fn(entry) {
-        log_row(logs, entry)
-      }))
+      html.div([attribute.class("log-rows")], stream_rows(logs, entries, options))
   }
 }
 
-fn log_row(logs: model.Logs, entry: model.LogEntry) -> Element(model.Msg) {
-  html.details([attribute.class("log-row")], [
+/// The one place rows and dividers are interleaved, so LOGS and the browser pane
+/// cannot drift apart. The fold carries how many compaction dividers have been
+/// drawn so far: the first one says history *begins*, later ones say it
+/// *continues*, and nothing above or below is collapsed.
+fn stream_rows(
+  logs: model.Logs,
+  entries: List(model.LogEntry),
+  options: model.RowOptions,
+) -> List(Element(model.Msg)) {
+  let #(rendered, _) = list.fold(entries, #([], 0), fn(state, entry) {
+    let #(done, seen) = state
+    case options.dividers && model.is_divider(entry.kind) {
+      True -> #([divider_row(entry, seen), ..done], seen + 1)
+      False -> #([log_row(logs, entry, options), ..done], seen)
+    }
+  })
+  list.reverse(rendered)
+}
+
+/// A compaction boundary: a full-width rule with the summary one click away. The
+/// entries on either side stay in the same list, in the same order.
+fn divider_row(entry: model.LogEntry, seen: Int) -> Element(model.Msg) {
+  html.div([attribute.class("log-divider")], [
+    html.span([attribute.class("divider-rule")], [text(model.divider_label(seen))]),
+    html.details([attribute.class("divider-summary")], [
+      html.summary([attribute.class("divider-head")], [
+        text("summary · " <> model.short_time(entry.at)),
+      ]),
+      html.pre([attribute.class("log-raw")], [text(pretty.json(entry.raw))]),
+    ]),
+    html.span([attribute.class("divider-rule")], []),
+  ])
+}
+
+fn log_row(
+  logs: model.Logs,
+  entry: model.LogEntry,
+  options: model.RowOptions,
+) -> Element(model.Msg) {
+  html.details([attribute.class(row_class(options, entry))], [
     html.summary([attribute.class("log-head")], [
       html.span([attribute.class("log-at")], [text(model.short_time(entry.at))]),
       html.span([attribute.class("log-kind " <> kind_class(entry.kind))], [text(entry.kind)]),
@@ -479,10 +521,25 @@ fn log_row(logs: model.Logs, entry: model.LogEntry) -> Element(model.Msg) {
         None -> element_none()
       },
       html.span([attribute.class("log-text")], [text(entry.text)]),
+      case model.is_anchor(options, entry) {
+        True -> html.span([attribute.class("log-hit")], [text("hit")])
+        False -> element_none()
+      },
     ]),
-    html.pre([attribute.class("log-raw")], [text(entry.raw)]),
+    // The record is stored compact on purpose; indenting it here is a display
+    // choice and never leaves the browser.
+    html.pre([attribute.class("log-raw")], [text(pretty.json(entry.raw))]),
     spill_block(logs, entry),
   ])
+}
+
+/// The row a search hit landed on is marked: landing in a window of ±25 is only
+/// useful if you can see which one you asked for.
+fn row_class(options: model.RowOptions, entry: model.LogEntry) -> String {
+  case model.is_anchor(options, entry) {
+    True -> "log-row hit"
+    False -> "log-row"
+  }
 }
 
 /// A row whose record spilled its full output: the expander fetches
@@ -526,5 +583,164 @@ fn or_default_logs(logs: Option(model.Logs)) -> model.Logs {
   case logs {
     Some(logs) -> logs
     None -> model.empty_logs()
+  }
+}
+
+// --- the browser tab ------------------------------------------------------
+
+/// Search box on top, jump list under it, then rail + pane. The search is over
+/// every conversation, so a hit can be in a space that is not the one on screen.
+fn browser_tab(current: model.Model) -> Element(model.Msg) {
+  let browser = current.browser
+  html.section([attribute.class("browser")], [
+    browser_search(browser.search),
+    browser_hits(browser.search),
+    html.div([attribute.class("browser-body")], [
+      conversation_rail(browser),
+      browser_pane(browser),
+    ]),
+  ])
+}
+
+fn browser_search(search: model.Search) -> Element(model.Msg) {
+  html.div([attribute.class("log-controls browser-search")], [
+    html.input([
+      attribute.attribute("type", "search"),
+      attribute.attribute("placeholder", "search every conversation — enter"),
+      attribute.attribute("value", search.query),
+      attribute.class("search"),
+      event.on_input(model.SearchChanged),
+      // Enter submits; every other key just types. The box answers no question
+      // until it is asked, and the hits list keeps saying what it answered.
+      event.on_keydown(model.SearchKeyed),
+    ]),
+    html.button(
+      [
+        attribute.attribute("type", "button"),
+        attribute.class("older"),
+        event.on_click(model.SearchSubmitted),
+      ],
+      [text("search")],
+    ),
+    html.span([attribute.class("log-line")], [text(model.search_line(search))]),
+  ])
+}
+
+fn browser_hits(search: model.Search) -> Element(model.Msg) {
+  case search.asked, search.hits, search.error {
+    "", [], None -> element_none()
+    _, _, _ ->
+      html.div([attribute.class("hits")], [
+        case search.error {
+          Some(problem) -> html.p([attribute.class("banner")], [text(problem)])
+          None -> element_none()
+        },
+        html.div([attribute.class("hit-rows")], list.map(search.hits, hit_row)),
+      ])
+  }
+}
+
+/// One hit: which space, when, which kind, and the matched line. Clicking it
+/// selects that space and opens a window around the entry.
+fn hit_row(hit: model.SearchHit) -> Element(model.Msg) {
+  html.button(
+    [
+      attribute.attribute("type", "button"),
+      attribute.class("hit"),
+      event.on_click(model.HitChosen(hit.conversation, hit.entry)),
+    ],
+    [
+      html.span([attribute.class("hit-space")], [text(hit.conversation_title)]),
+      html.span([attribute.class("hit-at")], [text(model.short_stamp(hit.at))]),
+      html.span([attribute.class("log-kind " <> kind_class(hit.kind))], [text(hit.kind)]),
+      html.span([attribute.class("hit-text")], [text(clip(hit.text, 160))]),
+    ],
+  )
+}
+
+/// A hit line is one line: the full text is in the row you land on.
+fn clip(text: String, limit: Int) -> String {
+  case string.length(text) > limit {
+    True -> string.slice(text, 0, limit) <> "…"
+    False -> text
+  }
+}
+
+fn conversation_rail(browser: model.Browser) -> Element(model.Msg) {
+  html.div([attribute.class("rail")], [
+    html.p([attribute.class("rail-head")], [text("spaces")]),
+    case browser.conversations_error {
+      Some(problem) -> html.p([attribute.class("banner")], [text(problem)])
+      None -> element_none()
+    },
+    case model.order_conversations(browser.conversations) {
+      [] -> html.p([attribute.class("muted")], [text("no conversations yet")])
+      items ->
+        html.div(
+          [attribute.class("rail-cards")],
+          list.map(items, fn(item) { conversation_card(browser, item) }),
+        )
+    },
+  ])
+}
+
+/// One space: title, the same state badge the AGENTS card uses, how many entries
+/// it holds and when it ran. The main conversation is pinned first by
+/// `model.order_conversations`.
+fn conversation_card(browser: model.Browser, item: model.Conversation) -> Element(model.Msg) {
+  html.button(
+    [
+      attribute.attribute("type", "button"),
+      attribute.class(model.space_class(browser.selected, item.id)),
+      event.on_click(model.ConversationChosen(item.id)),
+    ],
+    [
+      html.span([attribute.class("space-head")], [
+        html.span([attribute.class("space-title")], [text(item.title)]),
+        html.span([attribute.class(model.agent_state_class(item.state))], [
+          text(model.agent_state_label(item.state)),
+        ]),
+      ]),
+      html.span([attribute.class("space-meta")], [text(model.conversation_line(item))]),
+      html.span([attribute.class("space-meta")], [text(model.conversation_span(item))]),
+    ],
+  )
+}
+
+fn browser_pane(browser: model.Browser) -> Element(model.Msg) {
+  let logs = or_default_logs(browser.stream)
+  html.div([attribute.class("pane")], [
+    html.div([attribute.class("pane-head")], [
+      html.h2([attribute.class("pane-title")], [text(pane_title(browser))]),
+      case browser.anchor {
+        Some(_) ->
+          html.button(
+            [
+              attribute.attribute("type", "button"),
+              attribute.class("older"),
+              event.on_click(model.BrowserTailRequested),
+            ],
+            [text("back to the tail")],
+          )
+        None -> element_none()
+      },
+      html.span([attribute.class("log-line")], [text(model.logs_line(logs))]),
+    ]),
+    case logs.error {
+      Some(problem) -> html.p([attribute.class("banner")], [text(problem)])
+      None -> element_none()
+    },
+    log_rows(logs, model.browser_options(browser.anchor)),
+    case logs.next_before {
+      Some(_) -> html.p([attribute.class("muted")], [text("older entries available")])
+      None -> element_none()
+    },
+  ])
+}
+
+fn pane_title(browser: model.Browser) -> String {
+  case model.selected_conversation(browser) {
+    None -> "select a space"
+    Some(item) -> item.title <> " · " <> model.agent_state_label(item.state)
   }
 }

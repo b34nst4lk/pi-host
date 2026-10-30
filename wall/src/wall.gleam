@@ -2,12 +2,17 @@
 //// `init` / `update` / `view` — polling the reader every 10 s, drawing its own
 //// sparklines, no chart library and no frontend framework.
 ////
+//// Three tabs, one poll: the dashboard's two endpoints, the LOGS tail, and the
+//// BROWSER's rail plus stream. Both log views render through `view.log_rows`, so
+//// the expanders, the spill reader and the pretty record are one code path.
+////
 //// Two data sources, one code path: `?fake=1` feeds the same decoders from
 //// built-in fixtures (`wall/fake.gleam`), so the UI can be developed and tested
 //// with no reader running and no network at all.
 
 import gleam/list
 import gleam/option
+import gleam/string
 import lustre
 import lustre/effect
 import wall/decode
@@ -80,6 +85,9 @@ pub fn update(current: model.Model, msg: model.Msg) -> #(model.Model, effect.Eff
       let next = model.Model(..current, tab: tab)
       let load = case tab {
         model.LogsTab -> reload(next)
+        // The rail first: its arrival picks the main conversation and asks for
+        // that stream, so the tab never opens on an empty pane.
+        model.BrowserTab -> effect.batch([load_conversations(next.mode), load_browser(next)])
         model.Dashboard -> effect.none()
       }
       #(next, load)
@@ -132,6 +140,120 @@ pub fn update(current: model.Model, msg: model.Msg) -> #(model.Model, effect.Eff
       }
     }
     model.SpillFailed(id, problem) -> #(with_spill(current, id, "error: " <> problem), effect.none())
+
+    // --- the browser tab -------------------------------------------------
+    model.ConversationsArrived(body) -> {
+      case decode.conversations(body) {
+        Ok(page) if page.ok -> {
+          let items = model.order_conversations(page.items)
+          let browser =
+            model.Browser(..current.browser, conversations: items, conversations_error: option.None)
+          // Nothing selected yet: pick the first card, which the ordering pins to
+          // main. A picker that opens with nothing on screen is a puzzle.
+          case browser.selected {
+            option.None ->
+              case list.first(items) {
+                Ok(first) -> {
+                  let next =
+                    model.Model(..current, browser: model.select_conversation(browser, first.id))
+                  #(next, load_browser(next))
+                }
+                Error(_) -> #(model.Model(..current, browser: browser), effect.none())
+              }
+            option.Some(_) -> #(model.Model(..current, browser: browser), effect.none())
+          }
+        }
+        Ok(page) -> {
+          let browser =
+            model.Browser(
+              ..current.browser,
+              conversations_error: option.Some(
+                option.unwrap(page.error, "the reader could not read the conversations"),
+              ),
+            )
+          #(model.Model(..current, browser: browser), effect.none())
+        }
+        Error(problem) -> #(fail(current, problem), effect.none())
+      }
+    }
+    model.ConversationChosen(id) -> {
+      let next = model.Model(..current, browser: model.select_conversation(current.browser, id))
+      #(next, load_browser(next))
+    }
+    model.BrowserLogsArrived(body) -> {
+      case decode.logs(body) {
+        Ok(page) if page.ok -> {
+          let previous = current.browser.stream |> option.unwrap(model.empty_logs())
+          let stream =
+            model.Logs(
+              entries: page.entries,
+              next_before: page.next_before,
+              // A window around a hit is not a tail: the poll must not move the
+              // rows out from under the reader while they are reading them.
+              tailing: current.browser.anchor == option.None,
+              appending: False,
+              spills: previous.spills,
+              error: option.None,
+            )
+          let browser = model.Browser(..current.browser, stream: option.Some(stream))
+          #(model.Model(..current, browser: browser), effect.none())
+        }
+        Ok(page) -> {
+          let previous = current.browser.stream |> option.unwrap(model.empty_logs())
+          let stream =
+            model.Logs(
+              ..previous,
+              appending: False,
+              error: option.Some(
+                option.unwrap(page.error, "the reader could not read the ledger"),
+              ),
+            )
+          let browser = model.Browser(..current.browser, stream: option.Some(stream))
+          #(model.Model(..current, browser: browser), effect.none())
+        }
+        Error(problem) -> #(fail(current, problem), effect.none())
+      }
+    }
+    model.HitChosen(conversation, entry) -> {
+      let browser = model.jump_to_hit(current.browser, conversation, entry)
+      let next = model.Model(..current, tab: model.BrowserTab, browser: browser)
+      #(next, load_browser(next))
+    }
+    model.BrowserTailRequested -> {
+      let next = model.Model(..current, browser: model.tail_conversation(current.browser))
+      #(next, load_browser(next))
+    }
+    model.SearchChanged(query) -> {
+      // Typing is not searching: the hits on screen keep answering the query they
+      // came from until Enter is pressed.
+      let search = model.Search(..current.browser.search, query: query)
+      #(
+        model.Model(..current, browser: model.Browser(..current.browser, search: search)),
+        effect.none(),
+      )
+    }
+    model.SearchKeyed(key) -> {
+      case string.lowercase(key) {
+        "enter" -> submit_search(current)
+        _ -> #(current, effect.none())
+      }
+    }
+    model.SearchSubmitted -> submit_search(current)
+    model.SearchArrived(body) -> {
+      case decode.search(body) {
+        Ok(page) if page.ok -> #(with_hits(current, page.hits, option.None), effect.none())
+        Ok(page) ->
+          #(
+            with_hits(
+              current,
+              page.hits,
+              option.Some(option.unwrap(page.error, "the search failed")),
+            ),
+            effect.none(),
+          )
+        Error(problem) -> #(fail(current, problem), effect.none())
+      }
+    }
   }
 }
 
@@ -189,20 +311,41 @@ fn dedupe(entries: List(model.LogEntry)) -> List(model.LogEntry) {
   kept
 }
 
+/// A spill answer lands in whichever stream asked for it. The browser pane's rows
+/// are the same rows, so the map is keyed by entry id and written to both.
 fn with_spill(current: model.Model, id: Int, text: String) -> model.Model {
   let previous = current.logs |> option.unwrap(model.empty_logs())
   let rest = list.filter(previous.spills, fn(pair) { pair.0 != id })
-  with_logs(current, model.Logs(..previous, spills: [#(id, text), ..rest]))
+  let logs = model.Logs(..previous, spills: [#(id, text), ..rest])
+  let browser = case current.browser.stream {
+    option.None -> current.browser
+    option.Some(stream) -> {
+      let kept = list.filter(stream.spills, fn(pair) { pair.0 != id })
+      let stream = model.Logs(..stream, spills: [#(id, text), ..kept])
+      model.Browser(..current.browser, stream: option.Some(stream))
+    }
+  }
+  model.Model(..current, logs: option.Some(logs), browser: browser)
 }
 
 // --- the logs tab: effects ------------------------------------------------
 
-/// Should the poll refresh the page? Only while it shows the newest rows.
+/// Should the poll refresh the LOGS page? Only while it shows the newest rows.
 fn tail_active(current: model.Model) -> Bool {
   case current.tab, current.logs {
-    model.Dashboard, _ -> False
     model.LogsTab, option.Some(logs) -> logs.tailing
     model.LogsTab, option.None -> True
+    _, _ -> False
+  }
+}
+
+/// Should the poll refresh the BROWSER pane? While it follows the tail of a
+/// selected space — not while it is a window around a landed hit.
+fn browser_tail_active(current: model.Model) -> Bool {
+  case current.tab {
+    model.BrowserTab ->
+      current.browser.selected != option.None && current.browser.anchor == option.None
+    _ -> False
   }
 }
 
@@ -244,6 +387,131 @@ fn load_spill(id: Int, path: String, mode: model.Mode) -> effect.Effect(model.Ms
     }
     Nil
   })
+}
+
+// --- the browser tab: state transitions and effects ----------------------
+
+fn with_hits(
+  current: model.Model,
+  hits: List(model.SearchHit),
+  problem: option.Option(String),
+) -> model.Model {
+  let search =
+    model.Search(..current.browser.search, hits: hits, loading: False, error: problem)
+  model.Model(..current, browser: model.Browser(..current.browser, search: search))
+}
+
+/// Enter (or the button): search once for what is in the box. An empty box is a
+/// mistake, not a query, so it says so rather than searching for everything.
+fn submit_search(current: model.Model) -> #(model.Model, effect.Effect(model.Msg)) {
+  let asked = string.trim(current.browser.search.query)
+  case asked {
+    "" -> {
+      let search =
+        model.Search(
+          ..current.browser.search,
+          loading: False,
+          error: option.Some("type something to search for"),
+        )
+      #(
+        model.Model(..current, browser: model.Browser(..current.browser, search: search)),
+        effect.none(),
+      )
+    }
+    _ -> {
+      let search =
+        model.Search(..current.browser.search, asked: asked, loading: True, error: option.None)
+      let next = model.Model(..current, browser: model.Browser(..current.browser, search: search))
+      #(next, run_search(asked, current.mode))
+    }
+  }
+}
+
+fn load_conversations(mode: model.Mode) -> effect.Effect(model.Msg) {
+  effect.from(fn(dispatch) {
+    case mode {
+      model.FakeMode -> dispatch(model.ConversationsArrived(fake.conversations_json()))
+      model.LiveMode ->
+        ffi.fetch_text(
+          "/api/conversations",
+          fn(body) { dispatch(model.ConversationsArrived(body)) },
+          fn(problem) { dispatch(model.Failed(problem)) },
+        )
+    }
+    Nil
+  })
+}
+
+/// The selected space's stream: the tail, or the window around a landed hit.
+fn load_browser(current: model.Model) -> effect.Effect(model.Msg) {
+  effect.from(fn(dispatch) {
+    case current.browser.selected {
+      option.None -> Nil
+      option.Some(id) -> {
+        case current.mode {
+          model.FakeMode ->
+            dispatch(
+              model.BrowserLogsArrived(
+                fake.browser_logs_json(id, current.filters, ffi.now_ms() / poll_interval_ms),
+              ),
+            )
+          model.LiveMode ->
+            ffi.fetch_text(
+              model.logs_path_for(
+                current.filters,
+                option.Some(id),
+                option.None,
+                model.log_limit,
+                current.browser.anchor,
+              ),
+              fn(body) { dispatch(model.BrowserLogsArrived(body)) },
+              fn(problem) { dispatch(model.Failed(problem)) },
+            )
+        }
+        Nil
+      }
+    }
+  })
+}
+
+fn run_search(query: String, mode: model.Mode) -> effect.Effect(model.Msg) {
+  effect.from(fn(dispatch) {
+    case mode {
+      model.FakeMode -> dispatch(model.SearchArrived(fake.search_json(query)))
+      model.LiveMode ->
+        ffi.fetch_text(
+          model.search_path(query, model.search_limit),
+          fn(body) { dispatch(model.SearchArrived(body)) },
+          fn(problem) { dispatch(model.Failed(problem)) },
+        )
+    }
+    Nil
+  })
+}
+
+/// One poll of the browser tab: the rail always, the pane only while it tails.
+fn poll_browser(current: model.Model, dispatch: fn(model.Msg) -> Nil) -> Nil {
+  ffi.fetch_text(
+    "/api/conversations",
+    fn(body) { dispatch(model.ConversationsArrived(body)) },
+    fn(problem) { dispatch(model.Failed(problem)) },
+  )
+  case current.browser.selected {
+    option.Some(id) ->
+      ffi.fetch_text(
+        model.logs_path_for(
+          current.filters,
+          option.Some(id),
+          option.None,
+          model.log_limit,
+          current.browser.anchor,
+        ),
+        fn(body) { dispatch(model.BrowserLogsArrived(body)) },
+        fn(problem) { dispatch(model.Failed(problem)) },
+      )
+    option.None -> Nil
+  }
+  Nil
 }
 
 /// The queue's error lines are part of `queue` but the decoders keep them
@@ -319,6 +587,10 @@ fn poll(current: model.Model) -> effect.Effect(model.Msg) {
             )
           False -> Nil
         }
+        case browser_tail_active(current) {
+          True -> poll_browser(current, dispatch)
+          False -> Nil
+        }
       }
     }
     Nil
@@ -333,6 +605,17 @@ fn fixtures_tick(current: model.Model, dispatch: fn(model.Msg) -> Nil) -> Nil {
   dispatch(model.SpendArrived(fake.spend_json(poll)))
   case tail_active(current) {
     True -> dispatch(model.LogsArrived(fake.logs_json(current.filters, poll)))
+    False -> Nil
+  }
+  case browser_tail_active(current) {
+    True -> {
+      dispatch(model.ConversationsArrived(fake.conversations_json()))
+      case current.browser.selected {
+        option.Some(id) ->
+          dispatch(model.BrowserLogsArrived(fake.browser_logs_json(id, current.filters, poll)))
+        option.None -> Nil
+      }
+    }
     False -> Nil
   }
   Nil

@@ -276,3 +276,249 @@ export function spill_json() {
     "line one\nline two\n",
   )) + "\"}";
 }
+
+function space(id, kind, title, state, entries, first_at, last_at) {
+  return ((((((((((((("{\"id\":" + $int.to_string(id)) + ",\"kind\":\"") + kind) + "\",\"title\":\"") + title) + "\",\"state\":\"") + state) + "\",\"entries\":") + $int.to_string(
+    entries,
+  )) + ",\"first_at\":\"") + first_at) + "\",\"last_at\":\"") + last_at) + "\"}";
+}
+
+/**
+ * A plausible `/api/conversations` body: the main space with two compaction
+ * boundaries in its stream, and two named children — the demo the browser tab
+ * exists for, with no reader running.
+ */
+export function conversations_json() {
+  return ((((((("{\"v\":1,\"ok\":true,\"generated_at\":\"2026-10-29T14:31:02.512Z\",\"conversations\":[" + space(
+    1,
+    "main",
+    "main",
+    "working",
+    2051,
+    "2026-10-27T09:12:00.000Z",
+    "2026-10-29T14:30:55.000Z",
+  )) + ",") + space(
+    2166,
+    "child",
+    "reader",
+    "working",
+    3,
+    "2026-10-29T13:02:00.000Z",
+    "2026-10-29T14:29:11.000Z",
+  )) + ",") + space(
+    2402,
+    "child",
+    "wall-ui",
+    "reporting",
+    1,
+    "2026-10-29T14:11:00.000Z",
+    "2026-10-29T14:12:30.000Z",
+  )) + ",") + space(
+    2775,
+    "child",
+    "conversation 2775",
+    "unknown",
+    1,
+    "2026-10-29T14:20:00.000Z",
+    "2026-10-29T14:20:40.000Z",
+  )) + "]}";
+}
+
+/**
+ * A plausible `/api/logs?conversation=N` page. The main space carries two
+ * `pi.compaction` rows so the dividers are visible in fake mode; the children
+ * carry their own small streams. Any other id gets an empty page, which is what
+ * an unknown space would show.
+ */
+export function browser_logs_json(conversation, filters, poll) {
+  let base = 4110 + poll;
+  let _block;
+  if (conversation === 1) {
+    _block = listPrepend(
+      [
+        base,
+        "pi.assistant",
+        "the browser tab is up",
+        Option$None$const,
+        Option$None$const,
+      ],
+      listPrepend(
+        [
+          base - 1,
+          "pi.user",
+          "steer: build the activity browser",
+          Option$None$const,
+          Option$None$const,
+        ],
+        listPrepend(
+          [
+            base - 2,
+            "pi.compaction",
+            "compaction: rounds one to three summarised",
+            Option$None$const,
+            Option$None$const,
+          ],
+          listPrepend(
+            [
+              base - 3,
+              "pi.tool-result",
+              "bash: full output (18 bytes)",
+              Option$None$const,
+              new Some("/opt/pi-host/storage/spill/full.log"),
+            ],
+            listPrepend(
+              [
+                base - 4,
+                "pi.user",
+                "steer: the wall needs a browser",
+                Option$None$const,
+                Option$None$const,
+              ],
+              listPrepend(
+                [
+                  base - 5,
+                  "pi.compaction",
+                  "compaction: the earlier rounds summarised again",
+                  Option$None$const,
+                  Option$None$const,
+                ],
+                listPrepend(
+                  [
+                    base - 6,
+                    "pi.system",
+                    "system: preamble + 12 tools",
+                    Option$None$const,
+                    Option$None$const,
+                  ],
+                  $List$Empty$const,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  } else if (conversation === 2166) {
+    _block = listPrepend(
+      [
+        base,
+        "pi.assistant",
+        "child: the ledger looks fine",
+        new Some("reader"),
+        Option$None$const,
+      ],
+      listPrepend(
+        [
+          base - 1,
+          "pi.user",
+          "child: check the ledger",
+          new Some("reader"),
+          Option$None$const,
+        ],
+        listPrepend(
+          [
+            base - 2,
+            "pi.user",
+            "spawn reader",
+            Option$None$const,
+            Option$None$const,
+          ],
+          $List$Empty$const,
+        ),
+      ),
+    );
+  } else if (conversation === 2402) {
+    _block = listPrepend(
+      [
+        base,
+        "pi.assistant",
+        "child: the browser tab renders",
+        new Some("wall-ui"),
+        Option$None$const,
+      ],
+      $List$Empty$const,
+    );
+  } else {
+    _block = $List$Empty$const;
+  }
+  let rows = _block;
+  let kinds = $model.effective_kinds(filters);
+  let kept = $list.filter(
+    rows,
+    (row) => {
+      return kind_selected(kinds, row[1]) && text_matches(filters.query, row[2]);
+    },
+  );
+  return ((("{\"v\":1,\"ok\":true,\"entries\":[" + $string.join(
+    $list.map(kept, entry),
+    ",",
+  )) + "]") + (() => {
+    let $ = $list.is_empty(kept);
+    if ($) {
+      return "";
+    } else {
+      return ",\"next_before\":" + $int.to_string(base - 7);
+    }
+  })()) + "}";
+}
+
+function hit(row) {
+  let id = row[0];
+  let conversation = row[1];
+  let title = row[2];
+  let kind = row[3];
+  let text = row[4];
+  return ((((((((((("{\"conversation_id\":" + $int.to_string(conversation)) + ",\"conversation_title\":\"") + title) + "\",\"entry_id\":") + $int.to_string(
+    id,
+  )) + ",\"kind\":\"") + kind) + "\",\"at\":\"2026-10-29T14:30:") + pad2(
+    id % 60,
+  )) + ".000Z\",\"text\":\"") + text) + "\"}";
+}
+
+/**
+ * A plausible `/api/search` body: hits across three spaces, so the jump list has
+ * somewhere to jump to without a reader running.
+ */
+export function search_json(query) {
+  let $ = $string.trim(query);
+  if ($ === "") {
+    return "{\"v\":1,\"ok\":false,\"error\":\"q is required\",\"hits\":[]}";
+  } else {
+    let asked = $;
+    let corpus = listPrepend(
+      [4112, 1, "main", "pi.assistant", "the browser tab is up"],
+      listPrepend(
+        [4110, 1, "main", "pi.user", "steer: build the activity browser"],
+        listPrepend(
+          [4110, 2166, "reader", "pi.assistant", "child: the ledger looks fine"],
+          listPrepend(
+            [4109, 2166, "reader", "pi.user", "child: check the ledger"],
+            listPrepend(
+              [
+                4110,
+                2402,
+                "wall-ui",
+                "pi.assistant",
+                "child: the browser tab renders",
+              ],
+              $List$Empty$const,
+            ),
+          ),
+        ),
+      ),
+    );
+    let hits = $list.filter(
+      corpus,
+      (hit) => {
+        return $string.contains(
+          $string.lowercase(hit[4]),
+          $string.lowercase(asked),
+        );
+      },
+    );
+    return ((("{\"v\":1,\"ok\":true,\"q\":\"" + escape(asked)) + "\",\"limit\":25,\"hits\":[") + $string.join(
+      $list.map(hits, hit),
+      ",",
+    )) + "]}";
+  }
+}

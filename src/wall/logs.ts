@@ -1,4 +1,4 @@
-// The logs browser, reader side. Two halves, both defensive:
+// The logs browser, reader side. Two kinds of code, both defensive:
 //
 //  * `parseLogsQuery` / `likeEscape` / `kindPredicate` — turn a query string into
 //    clamped SQL parameters. Nothing here throws: a junk `limit` is the default, a
@@ -11,12 +11,29 @@
 // The entry `kind` lives inside the JSON record (`entries` has no kind column), so
 // kind filtering goes through JSON1 (`json_valid` guard first: a half-written row
 // must not fail the whole page).
+//
+// Round four added two more readers over the same table: `conversation` selects
+// one space and `around` centres a window on one entry (the "land in context"
+// mechanism), while `search` matches the whole record text across every
+// conversation. Both reuse `kindPredicate` and `likeEscape`: one escape rule, one
+// definition of what a `kind=` list means.
 import fs from "node:fs";
 import path from "node:path";
 
 /** Page size when the caller says nothing, and the hard ceiling. */
 export const DEFAULT_LIMIT = 50;
 export const MAX_LIMIT = 200;
+
+/**
+ * `?around=<id>` is a window, not a page: this many entries on either side of the
+ * anchor (so 51 rows with the anchor itself). The wall uses it to land a search
+ * hit in its own context instead of at the top of a conversation.
+ */
+export const AROUND_RADIUS = 25;
+
+/** Cross-conversation search: one page, no paging, capped like the logs are. */
+export const DEFAULT_SEARCH_LIMIT = 25;
+export const MAX_SEARCH_LIMIT = 100;
 
 /** A spill larger than this is served truncated (the browser is not a pager). */
 export const MAX_SPILL_BYTES = 4 * 1024 * 1024;
@@ -35,6 +52,16 @@ export type LogsQuery = {
 	readonly kinds: readonly string[];
 	readonly dir: LogDirection;
 	readonly q: string;
+	/** Which conversation to read; `null` means "the main one" (see `ledger.ts`). */
+	readonly conversation: number | null;
+	/** Centre a ±`AROUND_RADIUS` window on this entry id instead of paging. */
+	readonly around: number | null;
+};
+
+export type SearchQuery = {
+	readonly q: string;
+	readonly kinds: readonly string[];
+	readonly limit: number;
 };
 
 /** The kinds the contract names; anything else is still listable by its own name. */
@@ -67,6 +94,28 @@ export function parseLogsQuery(params: URLSearchParams): LogsQuery {
 		kinds,
 		dir: params.get("dir") === "asc" ? "asc" : "desc",
 		q: (params.get("q") ?? "").trim(),
+		// A junk conversation id is not an error here: the server rejects an id that
+		// is not a number, and `null` is the documented default (the main
+		// conversation). Existence is checked against the ledger, not the syntax.
+		conversation: positiveInt(params.get("conversation")),
+		around: positiveInt(params.get("around")),
+	};
+}
+
+/**
+ * The search query. Unlike `/api/logs` an empty `q` is not clamped to "everything":
+ * a search for nothing is a mistake, and the server answers it as one.
+ */
+export function parseSearchQuery(params: URLSearchParams): SearchQuery {
+	const limitRaw = positiveInt(params.get("limit"));
+	const kinds = (params.get("kind") ?? "")
+		.split(",")
+		.map((kind) => kind.trim())
+		.filter((kind) => kind.length > 0);
+	return {
+		q: (params.get("q") ?? "").trim(),
+		kinds,
+		limit: limitRaw === null ? DEFAULT_SEARCH_LIMIT : Math.min(limitRaw, MAX_SEARCH_LIMIT),
 	};
 }
 
@@ -140,6 +189,17 @@ function isoFromMs(value: unknown): string | null {
 	return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
+/**
+ * The timestamp of an entry record: `model[0].timestamp`, in milliseconds. Split
+ * out of `humanLine` because the conversation picker needs it without rendering a
+ * line, and one definition of "when" is better than two.
+ */
+export function entryAt(record: unknown): string | null {
+	if (!isRecord(record)) return null;
+	const message = Array.isArray(record.model) && isRecord(record.model[0]) ? record.model[0] : null;
+	return message === null ? null : isoFromMs(message.timestamp);
+}
+
 /** Where the full output of a spilled tool call lives, when the record says so. */
 export function spillPathOf(record: Record<string, unknown>): string | null {
 	const data = isRecord(record.data) ? record.data : null;
@@ -178,7 +238,7 @@ export function humanLine(record: unknown): HumanLine {
 	if (!isRecord(record)) return { kind: "unknown", text: "unknown entry", at: null, spill: null };
 	const kind = typeof record.kind === "string" && record.kind.length > 0 ? record.kind : "unknown";
 	const message = Array.isArray(record.model) && isRecord(record.model[0]) ? record.model[0] : null;
-	const at = message === null ? null : isoFromMs(message.timestamp);
+	const at = entryAt(record);
 	const spill = spillPathOf(record);
 
 	switch (kind) {

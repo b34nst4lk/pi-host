@@ -9,13 +9,16 @@ import * as $element from "../lustre/lustre/element.mjs";
 import {
   Ok,
   Error,
+  Empty as $Empty,
   List$Empty$const as $List$Empty$const,
   prepend as listPrepend,
   makeError,
 } from "./gleam.mjs";
+import * as $wall from "./wall.mjs";
 import * as $decode from "./wall/decode.mjs";
 import * as $fake from "./wall/fake.mjs";
 import * as $model from "./wall/model.mjs";
+import * as $pretty from "./wall/pretty.mjs";
 import * as $view from "./wall/view.mjs";
 
 const FILEPATH = "test/wall_test.gleam";
@@ -193,15 +196,15 @@ export function decodes_a_reader_state_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      119,
+      121,
       "decodes_a_reader_state_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: result,
-        start: 3827,
-        end: 3856,
-        pattern_start: 3838,
-        pattern_end: 3847
+        start: 3858,
+        end: 3887,
+        pattern_start: 3869,
+        pattern_end: 3878
       }
     )
   }
@@ -251,15 +254,15 @@ export function decodes_a_reader_spend_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      142,
+      144,
       "decodes_a_reader_spend_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 4701,
-        end: 4756,
-        pattern_start: 4712,
-        pattern_end: 4721
+        start: 4732,
+        end: 4787,
+        pattern_start: 4743,
+        pattern_end: 4752
       }
     )
   }
@@ -287,15 +290,15 @@ export function tolerates_missing_fields_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      152,
+      154,
       "tolerates_missing_fields_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 5053,
-        end: 5113,
-        pattern_start: 5064,
-        pattern_end: 5073
+        start: 5084,
+        end: 5144,
+        pattern_start: 5095,
+        pattern_end: 5104
       }
     )
   }
@@ -323,15 +326,15 @@ export function rejects_a_non_json_body_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      162,
+      164,
       "rejects_a_non_json_body_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 5451,
-        end: 5523,
-        pattern_start: 5462,
-        pattern_end: 5476
+        start: 5482,
+        end: 5554,
+        pattern_start: 5493,
+        pattern_end: 5507
       }
     )
   }
@@ -353,15 +356,15 @@ export function spend_without_money_is_unknown_not_zero_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      168,
+      170,
       "spend_without_money_is_unknown_not_zero_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 5737,
-        end: 5824,
-        pattern_start: 5748,
-        pattern_end: 5757
+        start: 5768,
+        end: 5855,
+        pattern_start: 5779,
+        pattern_end: 5788
       }
     )
   }
@@ -448,15 +451,15 @@ export function decodes_all_seven_agent_states_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      228,
+      230,
       "decodes_all_seven_agent_states_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 7929,
-        end: 7970,
-        pattern_start: 7940,
-        pattern_end: 7949
+        start: 7960,
+        end: 8001,
+        pattern_start: 7971,
+        pattern_end: 7980
       }
     )
   }
@@ -500,15 +503,15 @@ export function agent_without_state_is_unknown_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      245,
+      247,
       "agent_without_state_is_unknown_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 8338,
-        end: 8440,
-        pattern_start: 8349,
-        pattern_end: 8358
+        start: 8369,
+        end: 8471,
+        pattern_start: 8380,
+        pattern_end: 8389
       }
     )
   }
@@ -582,15 +585,15 @@ export function last_reply_renders_as_entry_or_dash_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      282,
+      284,
       "last_reply_renders_as_entry_or_dash_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 9501,
-        end: 9556,
-        pattern_start: 9512,
-        pattern_end: 9521
+        start: 9532,
+        end: 9587,
+        pattern_start: 9543,
+        pattern_end: 9552
       }
     )
   }
@@ -771,15 +774,15 @@ export function decodes_a_logs_page_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      399,
+      401,
       "decodes_a_logs_page_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 13332,
-        end: 13407,
-        pattern_start: 13343,
-        pattern_end: 13351
+        start: 13363,
+        end: 13438,
+        pattern_start: 13374,
+        pattern_end: 13382
       }
     )
   }
@@ -798,15 +801,15 @@ export function decodes_a_logs_page_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      403,
+      405,
       "decodes_a_logs_page_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $1,
-        start: 13536,
-        end: 13584,
-        pattern_start: 13547,
-        pattern_end: 13557
+        start: 13567,
+        end: 13615,
+        pattern_start: 13578,
+        pattern_end: 13588
       }
     )
   }
@@ -833,15 +836,15 @@ export function decodes_a_logs_page_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      410,
+      412,
       "decodes_a_logs_page_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $2,
-        start: 13926,
-        end: 13993,
-        pattern_start: 13937,
-        pattern_end: 13948
+        start: 13957,
+        end: 14024,
+        pattern_start: 13968,
+        pattern_end: 13979
       }
     )
   }
@@ -860,15 +863,15 @@ export function decodes_a_logs_page_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      412,
+      414,
       "decodes_a_logs_page_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $3,
-        start: 14073,
-        end: 14136,
-        pattern_start: 14084,
-        pattern_end: 14091
+        start: 14104,
+        end: 14167,
+        pattern_start: 14115,
+        pattern_end: 14122
       }
     )
   }
@@ -897,15 +900,15 @@ export function fake_fixtures_honour_the_filters_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      418,
+      420,
       "fake_fixtures_honour_the_filters_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 14281,
-        end: 14423,
-        pattern_start: 14292,
-        pattern_end: 14300
+        start: 14312,
+        end: 14454,
+        pattern_start: 14323,
+        pattern_end: 14331
       }
     )
   }
@@ -930,15 +933,15 @@ export function fake_fixtures_honour_the_filters_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      425,
+      427,
       "fake_fixtures_honour_the_filters_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $1,
-        start: 14509,
-        end: 14662,
-        pattern_start: 14520,
-        pattern_end: 14532
+        start: 14540,
+        end: 14693,
+        pattern_start: 14551,
+        pattern_end: 14563
       }
     )
   }
@@ -963,15 +966,15 @@ export function fake_fixtures_honour_the_filters_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      432,
+      434,
       "fake_fixtures_honour_the_filters_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $2,
-        start: 14758,
-        end: 14917,
-        pattern_start: 14769,
-        pattern_end: 14780
+        start: 14789,
+        end: 14948,
+        pattern_start: 14800,
+        pattern_end: 14811
       }
     )
   }
@@ -991,15 +994,15 @@ export function tolerates_a_row_with_missing_fields_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      442,
+      444,
       "tolerates_a_row_with_missing_fields_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 15057,
-        end: 15140,
-        pattern_start: 15068,
-        pattern_end: 15076
+        start: 15088,
+        end: 15171,
+        pattern_start: 15099,
+        pattern_end: 15107
       }
     )
   }
@@ -1012,15 +1015,15 @@ export function tolerates_a_row_with_missing_fields_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      443,
+      445,
       "tolerates_a_row_with_missing_fields_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $1,
-        start: 15143,
-        end: 15190,
-        pattern_start: 15154,
-        pattern_end: 15163
+        start: 15174,
+        end: 15221,
+        pattern_start: 15185,
+        pattern_end: 15194
       }
     )
   }
@@ -1048,15 +1051,15 @@ export function a_failed_read_is_a_message_not_a_crash_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      452,
+      454,
       "a_failed_read_is_a_message_not_a_crash_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 15440,
-        end: 15556,
-        pattern_start: 15451,
-        pattern_end: 15459
+        start: 15471,
+        end: 15587,
+        pattern_start: 15482,
+        pattern_end: 15490
       }
     )
   }
@@ -1078,15 +1081,15 @@ export function rejects_a_non_json_logs_body_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      461,
+      463,
       "rejects_a_non_json_logs_body_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 15732,
-        end: 15791,
-        pattern_start: 15743,
-        pattern_end: 15757
+        start: 15763,
+        end: 15822,
+        pattern_start: 15774,
+        pattern_end: 15788
       }
     )
   }
@@ -1116,15 +1119,15 @@ export function decodes_a_spill_test() {
       "let_assert",
       FILEPATH,
       "wall_test",
-      470,
+      472,
       "decodes_a_spill_test",
       "Pattern match failed, no pattern matched the value.",
       {
         value: $,
-        start: 16205,
-        end: 16255,
-        pattern_start: 16216,
-        pattern_end: 16230
+        start: 16236,
+        end: 16286,
+        pattern_start: 16247,
+        pattern_end: 16261
       }
     )
   }
@@ -1180,6 +1183,7 @@ function logs_model() {
     $model.Tab$LogsTab$const,
     _record.filters,
     new Some(sample_logs()),
+    _record.browser,
   );
 }
 
@@ -1290,6 +1294,7 @@ export function the_controls_show_the_current_filters_test() {
       "spill",
     ),
     _record.logs,
+    _record.browser,
   );
   let model_with_filters = _block;
   let _block$1;
@@ -1336,6 +1341,7 @@ export function an_empty_page_says_so_test() {
             );
           })(),
         ),
+        _record.browser,
       );
     })(),
   );
@@ -1347,4 +1353,848 @@ export function an_empty_page_says_so_test() {
   let _pipe$3 = html;
   let _pipe$4 = $string.contains(_pipe$3, "ledger unavailable");
   return $should.be_true(_pipe$4);
+}
+
+export function a_compact_record_gains_lines_test() {
+  let _pipe = $pretty.json("{\"kind\":\"pi.assistant\",\"id\":3610}");
+  return $should.equal(
+    _pipe,
+    "{\n  \"kind\": \"pi.assistant\",\n  \"id\": 3610\n}",
+  );
+}
+
+export function nesting_adds_a_level_each_time_test() {
+  let _pipe = $pretty.json("{\"a\":{\"b\":[1,2]}}");
+  return $should.equal(
+    _pipe,
+    "{\n  \"a\": {\n    \"b\": [\n      1,\n      2\n    ]\n  }\n}",
+  );
+}
+
+export function empty_containers_stay_on_one_line_test() {
+  let _pipe = $pretty.json("{\"a\":{},\"b\":[],\"c\":[{}]}");
+  return $should.equal(
+    _pipe,
+    "{\n  \"a\": {},\n  \"b\": [],\n  \"c\": [\n    {}\n  ]\n}",
+  );
+}
+
+export function string_literals_are_never_reformatted_test() {
+  let _pipe = $pretty.json("{\"t\":\"a {b}, c: \\\"d\\\"\"}");
+  $should.equal(_pipe, "{\n  \"t\": \"a {b}, c: \\\"d\\\"\"\n}");
+  let _pipe$1 = $pretty.json("{\"t\":\"back\\\\\"}");
+  return $should.equal(_pipe$1, "{\n  \"t\": \"back\\\\\"\n}");
+}
+
+export function top_level_shapes_are_kept_test() {
+  let _pipe = $pretty.json("[]");
+  $should.equal(_pipe, "[]");
+  let _pipe$1 = $pretty.json("[1,true,null]");
+  $should.equal(_pipe$1, "[\n  1,\n  true,\n  null\n]");
+  let _pipe$2 = $pretty.json("{ \"a\" : 1 }");
+  return $should.equal(_pipe$2, "{\n  \"a\": 1\n}");
+}
+
+export function a_record_that_is_not_json_is_left_alone_test() {
+  let _pipe = $pretty.json("not a record at all");
+  $should.equal(_pipe, "not a record at all");
+  let _pipe$1 = $pretty.json("");
+  $should.equal(_pipe$1, "");
+  let _pipe$2 = $pretty.json("{\"truncated\":");
+  return $should.equal(_pipe$2, "{\"truncated\":");
+}
+
+export function an_enormous_record_is_not_indented_test() {
+  let huge = ("{\"a\":\"" + $string.repeat("x", $pretty.max_pretty_chars)) + "\"}";
+  let _pipe = $pretty.json(huge);
+  return $should.equal(_pipe, huge);
+}
+
+export function the_expander_shows_the_indented_record_test() {
+  let _block;
+  let _pipe = $view.view(logs_model());
+  _block = $element.to_string(_pipe);
+  let html = _block;
+  let _pipe$1 = html;
+  let _pipe$2 = $string.contains(
+    _pipe$1,
+    "{\n  &quot;kind&quot;: &quot;pi.assistant&quot;\n}",
+  );
+  return $should.be_true(_pipe$2);
+}
+
+function sample_conversation(id, kind, title, state) {
+  return new $model.Conversation(
+    id,
+    kind,
+    title,
+    state,
+    2,
+    new Some("2026-10-29T13:02:00.000Z"),
+    new Some("2026-10-29T14:29:11.000Z"),
+  );
+}
+
+/**
+ * What two polls of the browser tab leave behind: the rail, the selection, and
+ * the selected space's stream.
+ * 
+ * @ignore
+ */
+function browser_model() {
+  let $ = $decode.conversations($fake.conversations_json());
+  let page;
+  if ($ instanceof Ok) {
+    page = $[0];
+  } else {
+    throw makeError(
+      "let_assert",
+      FILEPATH,
+      "wall_test",
+      662,
+      "browser_model",
+      "Pattern match failed, no pattern matched the value.",
+      {
+        value: $,
+        start: 22857,
+        end: 22926,
+        pattern_start: 22868,
+        pattern_end: 22876
+      }
+    )
+  }
+  let _block;
+  let _record = $model.empty_browser();
+  _block = new $model.Browser(
+    $model.order_conversations(page.items),
+    _record.conversations_error,
+    _record.selected,
+    _record.stream,
+    _record.anchor,
+    _record.search,
+  );
+  let browser = _block;
+  let browser$1 = $model.select_conversation(browser, 1);
+  let $1 = $decode.logs($fake.browser_logs_json(1, $model.empty_filters(), 0));
+  let logs;
+  if ($1 instanceof Ok) {
+    logs = $1[0];
+  } else {
+    throw makeError(
+      "let_assert",
+      FILEPATH,
+      "wall_test",
+      669,
+      "browser_model",
+      "Pattern match failed, no pattern matched the value.",
+      {
+        value: $1,
+        start: 23115,
+        end: 23201,
+        pattern_start: 23126,
+        pattern_end: 23134
+      }
+    )
+  }
+  let _record$1 = $model.initial($model.Mode$LiveMode$const);
+  return new $model.Model(
+    _record$1.mode,
+    _record$1.vitals,
+    _record$1.spend,
+    _record$1.agents,
+    _record$1.queue,
+    _record$1.samples,
+    _record$1.polls,
+    _record$1.error,
+    $model.Tab$BrowserTab$const,
+    _record$1.filters,
+    _record$1.logs,
+    new $model.Browser(
+      browser$1.conversations,
+      browser$1.conversations_error,
+      browser$1.selected,
+      new Some(
+        new $model.Logs(
+          logs.entries,
+          logs.next_before,
+          true,
+          false,
+          $List$Empty$const,
+          Option$None$const,
+        ),
+      ),
+      browser$1.anchor,
+      browser$1.search,
+    ),
+  );
+}
+
+export function the_conversations_decoder_reads_the_rail_test() {
+  let $ = $decode.conversations($fake.conversations_json());
+  let page;
+  if ($ instanceof Ok) {
+    page = $[0];
+  } else {
+    throw makeError(
+      "let_assert",
+      FILEPATH,
+      "wall_test",
+      690,
+      "the_conversations_decoder_reads_the_rail_test",
+      "Pattern match failed, no pattern matched the value.",
+      {
+        value: $,
+        start: 23631,
+        end: 23700,
+        pattern_start: 23642,
+        pattern_end: 23650
+      }
+    )
+  }
+  let _pipe = page.ok;
+  $should.be_true(_pipe);
+  let _pipe$1 = page.error;
+  $should.equal(_pipe$1, Option$None$const);
+  let _pipe$2 = page;
+  let _pipe$3 = ((page) => { return $model.order_conversations(page.items); })(
+    _pipe$2,
+  );
+  let _pipe$4 = $list.map(
+    _pipe$3,
+    (item) => { return [item.id, item.kind, item.title]; },
+  );
+  return $should.equal(
+    _pipe$4,
+    listPrepend(
+      [1, "main", "main"],
+      listPrepend(
+        [2166, "child", "reader"],
+        listPrepend(
+          [2402, "child", "wall-ui"],
+          listPrepend([2775, "child", "conversation 2775"], $List$Empty$const),
+        ),
+      ),
+    ),
+  );
+}
+
+export function a_conversation_with_drifted_fields_decodes_as_unknown_test() {
+  let $ = $decode.conversations(
+    "{\"ok\":true,\"conversations\":[{\"id\":\"x\",\"kind\":7,\"title\":null,\"state\":[],\"entries\":\"many\"}]}",
+  );
+  let page;
+  if ($ instanceof Ok) {
+    page = $[0];
+  } else {
+    throw makeError(
+      "let_assert",
+      FILEPATH,
+      "wall_test",
+      707,
+      "a_conversation_with_drifted_fields_decodes_as_unknown_test",
+      "Pattern match failed, no pattern matched the value.",
+      {
+        value: $,
+        start: 24244,
+        end: 24407,
+        pattern_start: 24255,
+        pattern_end: 24263
+      }
+    )
+  }
+  let $1 = page.items;
+  let item;
+  if ($1 instanceof $Empty) {
+    throw makeError(
+      "let_assert",
+      FILEPATH,
+      "wall_test",
+      710,
+      "a_conversation_with_drifted_fields_decodes_as_unknown_test",
+      "Pattern match failed, no pattern matched the value.",
+      {
+        value: $1,
+        start: 24410,
+        end: 24440,
+        pattern_start: 24421,
+        pattern_end: 24427
+      }
+    )
+  } else if ($1.tail instanceof $Empty) {
+    item = $1.head;
+  } else {
+    throw makeError(
+      "let_assert",
+      FILEPATH,
+      "wall_test",
+      710,
+      "a_conversation_with_drifted_fields_decodes_as_unknown_test",
+      "Pattern match failed, no pattern matched the value.",
+      {
+        value: $1,
+        start: 24410,
+        end: 24440,
+        pattern_start: 24421,
+        pattern_end: 24427
+      }
+    )
+  }
+  let _pipe = item.id;
+  $should.equal(_pipe, 0);
+  let _pipe$1 = item.kind;
+  $should.equal(_pipe$1, "unknown");
+  let _pipe$2 = item.title;
+  $should.equal(_pipe$2, "unknown");
+  let _pipe$3 = item.state;
+  $should.equal(_pipe$3, "unknown");
+  let _pipe$4 = item.entries;
+  $should.equal(_pipe$4, 0);
+  let _pipe$5 = item.first_at;
+  $should.equal(_pipe$5, Option$None$const);
+  let _pipe$6 = $model.agent_state_label(item.state);
+  return $should.equal(_pipe$6, "unknown");
+}
+
+export function an_unreadable_conversations_body_is_an_error_not_a_crash_test() {
+  let $ = $decode.conversations("<html>not json</html>");
+  let problem;
+  if ($ instanceof Error) {
+    problem = $[0];
+  } else {
+    throw makeError(
+      "let_assert",
+      FILEPATH,
+      "wall_test",
+      721,
+      "an_unreadable_conversations_body_is_an_error_not_a_crash_test",
+      "Pattern match failed, no pattern matched the value.",
+      {
+        value: $,
+        start: 24804,
+        end: 24877,
+        pattern_start: 24815,
+        pattern_end: 24829
+      }
+    )
+  }
+  let _pipe = problem;
+  let _pipe$1 = $string.starts_with(_pipe, "unexpected response shape: ");
+  $should.be_true(_pipe$1);
+  let $1 = $decode.conversations(
+    "{\"ok\":false,\"error\":\"ledger is locked\"}",
+  );
+  let page;
+  if ($1 instanceof Ok) {
+    page = $1[0];
+  } else {
+    throw makeError(
+      "let_assert",
+      FILEPATH,
+      "wall_test",
+      724,
+      "an_unreadable_conversations_body_is_an_error_not_a_crash_test",
+      "Pattern match failed, no pattern matched the value.",
+      {
+        value: $1,
+        start: 25042,
+        end: 25133,
+        pattern_start: 25053,
+        pattern_end: 25061
+      }
+    )
+  }
+  let _pipe$2 = page.ok;
+  $should.be_false(_pipe$2);
+  let _pipe$3 = page.error;
+  $should.equal(_pipe$3, new Some("ledger is locked"));
+  let _pipe$4 = page.items;
+  return $should.equal(_pipe$4, $List$Empty$const);
+}
+
+export function the_search_decoder_reads_the_jump_list_test() {
+  let $ = $decode.search($fake.search_json("browser"));
+  let page;
+  if ($ instanceof Ok) {
+    page = $[0];
+  } else {
+    throw makeError(
+      "let_assert",
+      FILEPATH,
+      "wall_test",
+      731,
+      "the_search_decoder_reads_the_jump_list_test",
+      "Pattern match failed, no pattern matched the value.",
+      {
+        value: $,
+        start: 25313,
+        end: 25377,
+        pattern_start: 25324,
+        pattern_end: 25332
+      }
+    )
+  }
+  let _pipe = page.ok;
+  $should.be_true(_pipe);
+  let _pipe$1 = page;
+  let _pipe$2 = ((page) => {
+    return $list.map(
+      page.hits,
+      (hit) => { return [hit.conversation, hit.entry, hit.conversation_title]; },
+    );
+  })(_pipe$1);
+  return $should.equal(
+    _pipe$2,
+    listPrepend(
+      [new Some(1), 4112, "main"],
+      listPrepend(
+        [new Some(1), 4110, "main"],
+        listPrepend([new Some(2402), 4110, "wall-ui"], $List$Empty$const),
+      ),
+    ),
+  );
+}
+
+export function a_drifted_hit_still_renders_but_cannot_be_jumped_to_test() {
+  let $ = $decode.search(
+    "{\"ok\":true,\"hits\":[{\"entry_id\":\"x\",\"conversation_id\":null,\"text\":7}]}",
+  );
+  let page;
+  if ($ instanceof Ok) {
+    page = $[0];
+  } else {
+    throw makeError(
+      "let_assert",
+      FILEPATH,
+      "wall_test",
+      743,
+      "a_drifted_hit_still_renders_but_cannot_be_jumped_to_test",
+      "Pattern match failed, no pattern matched the value.",
+      {
+        value: $,
+        start: 25727,
+        end: 25856,
+        pattern_start: 25738,
+        pattern_end: 25746
+      }
+    )
+  }
+  let $1 = page.hits;
+  let hit;
+  if ($1 instanceof $Empty) {
+    throw makeError(
+      "let_assert",
+      FILEPATH,
+      "wall_test",
+      746,
+      "a_drifted_hit_still_renders_but_cannot_be_jumped_to_test",
+      "Pattern match failed, no pattern matched the value.",
+      {
+        value: $1,
+        start: 25859,
+        end: 25887,
+        pattern_start: 25870,
+        pattern_end: 25875
+      }
+    )
+  } else if ($1.tail instanceof $Empty) {
+    hit = $1.head;
+  } else {
+    throw makeError(
+      "let_assert",
+      FILEPATH,
+      "wall_test",
+      746,
+      "a_drifted_hit_still_renders_but_cannot_be_jumped_to_test",
+      "Pattern match failed, no pattern matched the value.",
+      {
+        value: $1,
+        start: 25859,
+        end: 25887,
+        pattern_start: 25870,
+        pattern_end: 25875
+      }
+    )
+  }
+  let _pipe = hit.conversation;
+  $should.equal(_pipe, Option$None$const);
+  let _pipe$1 = hit.entry;
+  $should.equal(_pipe$1, 0);
+  let _pipe$2 = hit.conversation_title;
+  $should.equal(_pipe$2, "unknown");
+  let _pipe$3 = hit.text;
+  $should.equal(_pipe$3, "unknown entry");
+  let _pipe$4 = $model.jump_to_hit(
+    $model.empty_browser(),
+    hit.conversation,
+    hit.entry,
+  );
+  return $should.equal(_pipe$4, $model.empty_browser());
+}
+
+export function the_rail_pins_main_first_then_children_in_id_order_test() {
+  let _pipe = listPrepend(
+    sample_conversation(9, "child", "b", "alive"),
+    listPrepend(
+      sample_conversation(3, "child", "a", "alive"),
+      listPrepend(
+        sample_conversation(1, "main", "main", "working"),
+        listPrepend(
+          sample_conversation(2, "child", "c", "alive"),
+          $List$Empty$const,
+        ),
+      ),
+    ),
+  );
+  let _pipe$1 = $model.order_conversations(_pipe);
+  let _pipe$2 = $list.map(_pipe$1, (item) => { return item.id; });
+  $should.equal(
+    _pipe$2,
+    listPrepend(
+      1,
+      listPrepend(2, listPrepend(3, listPrepend(9, $List$Empty$const))),
+    ),
+  );
+  let _pipe$3 = $model.conversation_line(
+    sample_conversation(1, "main", "main", "working"),
+  );
+  $should.equal(_pipe$3, "2 entries");
+  let _pipe$4 = $model.conversation_span(
+    sample_conversation(1, "main", "main", "working"),
+  );
+  return $should.equal(_pipe$4, "10-29 13:02 → 10-29 14:29");
+}
+
+export function the_browser_asks_for_one_conversation_and_a_window_test() {
+  let _pipe = $model.logs_path($model.empty_filters(), Option$None$const, 50);
+  $should.equal(_pipe, "/api/logs?limit=50&dir=desc");
+  let _pipe$1 = $model.logs_path_for(
+    $model.empty_filters(),
+    new Some(2166),
+    Option$None$const,
+    50,
+    Option$None$const,
+  );
+  $should.equal(_pipe$1, "/api/logs?limit=50&dir=desc&conversation=2166");
+  let _pipe$2 = $model.logs_path_for(
+    $model.empty_filters(),
+    new Some(2166),
+    Option$None$const,
+    50,
+    new Some(4110),
+  );
+  $should.equal(
+    _pipe$2,
+    "/api/logs?limit=50&dir=desc&conversation=2166&around=4110",
+  );
+  let _pipe$3 = $model.search_path("  wall & browser  ", 25);
+  $should.equal(_pipe$3, "/api/search?limit=25&q=wall%20%26%20browser");
+  let _pipe$4 = $model.search_path("", 25);
+  return $should.equal(_pipe$4, "/api/search?limit=25&q=");
+}
+
+export function a_hit_selects_its_conversation_and_opens_a_window_test() {
+  let start = browser_model();
+  let _pipe = start.browser.selected;
+  $should.equal(_pipe, new Some(1));
+  let $ = $wall.update(start, new $model.HitChosen(new Some(2166), 4110));
+  let landed = $[0];
+  let _pipe$1 = landed.tab;
+  $should.equal(_pipe$1, $model.Tab$BrowserTab$const);
+  let _pipe$2 = landed.browser.selected;
+  $should.equal(_pipe$2, new Some(2166));
+  let _pipe$3 = landed.browser.anchor;
+  $should.equal(_pipe$3, new Some(4110));
+  let $1 = $decode.logs(
+    $fake.browser_logs_json(2166, $model.empty_filters(), 0),
+  );
+  let page;
+  if ($1 instanceof Ok) {
+    page = $1[0];
+  } else {
+    throw makeError(
+      "let_assert",
+      FILEPATH,
+      "wall_test",
+      799,
+      "a_hit_selects_its_conversation_and_opens_a_window_test",
+      "Pattern match failed, no pattern matched the value.",
+      {
+        value: $1,
+        start: 28211,
+        end: 28300,
+        pattern_start: 28222,
+        pattern_end: 28230
+      }
+    )
+  }
+  let $2 = $wall.update(
+    landed,
+    new $model.BrowserLogsArrived(
+      $fake.browser_logs_json(2166, $model.empty_filters(), 0),
+    ),
+  );
+  let window = $2[0];
+  let $3 = window.browser.stream;
+  let stream;
+  if ($3 instanceof Some) {
+    stream = $3[0];
+  } else {
+    throw makeError(
+      "let_assert",
+      FILEPATH,
+      "wall_test",
+      801,
+      "a_hit_selects_its_conversation_and_opens_a_window_test",
+      "Pattern match failed, no pattern matched the value.",
+      {
+        value: $3,
+        start: 28426,
+        end: 28473,
+        pattern_start: 28437,
+        pattern_end: 28449
+      }
+    )
+  }
+  let _pipe$4 = stream.tailing;
+  $should.be_false(_pipe$4);
+  let _pipe$5 = stream.entries;
+  let _pipe$6 = $list.length(_pipe$5);
+  $should.equal(_pipe$6, $list.length(page.entries));
+  let $4 = $wall.update(window, $model.Msg$BrowserTailRequested$const);
+  let tailing = $4[0];
+  let _pipe$7 = tailing.browser.anchor;
+  return $should.equal(_pipe$7, Option$None$const);
+}
+
+export function compaction_entries_are_dividers_in_the_browser_only_test() {
+  let _pipe = $model.is_divider("pi.compaction");
+  $should.be_true(_pipe);
+  let _pipe$1 = $model.is_divider("pi.user");
+  $should.be_false(_pipe$1);
+  let _pipe$2 = $model.divider_label(0);
+  $should.equal(_pipe$2, "— summarized history begins —");
+  let _pipe$3 = $model.divider_label(3);
+  $should.equal(_pipe$3, "— summarized history continues —");
+  let _block;
+  let _pipe$4 = $view.view(browser_model());
+  _block = $element.to_string(_pipe$4);
+  let html = _block;
+  let _pipe$5 = html;
+  let _pipe$6 = count_of(_pipe$5, "class=\"log-divider\"");
+  $should.equal(_pipe$6, 2);
+  let _pipe$7 = html;
+  let _pipe$8 = $string.contains(_pipe$7, "— summarized history begins —");
+  $should.be_true(_pipe$8);
+  let _pipe$9 = html;
+  let _pipe$10 = $string.contains(_pipe$9, "— summarized history continues —");
+  $should.be_true(_pipe$10);
+  let _pipe$11 = html;
+  let _pipe$12 = count_of(_pipe$11, "class=\"log-row\"");
+  $should.equal(_pipe$12, 5);
+  let _pipe$13 = html;
+  let _pipe$14 = $string.contains(_pipe$13, "the browser tab is up");
+  $should.be_true(_pipe$14);
+  let _pipe$15 = html;
+  let _pipe$16 = $string.contains(_pipe$15, "system: preamble + 12 tools");
+  return $should.be_true(_pipe$16);
+}
+
+export function the_same_rows_render_in_the_logs_tab_without_dividers_test() {
+  let $ = $decode.logs($fake.browser_logs_json(1, $model.empty_filters(), 0));
+  let page;
+  if ($ instanceof Ok) {
+    page = $[0];
+  } else {
+    throw makeError(
+      "let_assert",
+      FILEPATH,
+      "wall_test",
+      828,
+      "the_same_rows_render_in_the_logs_tab_without_dividers_test",
+      "Pattern match failed, no pattern matched the value.",
+      {
+        value: $,
+        start: 29839,
+        end: 29925,
+        pattern_start: 29850,
+        pattern_end: 29858
+      }
+    )
+  }
+  let logs = new $model.Logs(
+    page.entries,
+    page.next_before,
+    true,
+    false,
+    $List$Empty$const,
+    Option$None$const,
+  );
+  let _block;
+  let _pipe = $view.view(
+    (() => {
+      let _record = $model.initial($model.Mode$LiveMode$const);
+      return new $model.Model(
+        _record.mode,
+        _record.vitals,
+        _record.spend,
+        _record.agents,
+        _record.queue,
+        _record.samples,
+        _record.polls,
+        _record.error,
+        $model.Tab$LogsTab$const,
+        _record.filters,
+        new Some(logs),
+        _record.browser,
+      );
+    })(),
+  );
+  _block = $element.to_string(_pipe);
+  let html = _block;
+  let _pipe$1 = html;
+  let _pipe$2 = count_of(_pipe$1, "class=\"log-divider\"");
+  $should.equal(_pipe$2, 0);
+  let _pipe$3 = html;
+  let _pipe$4 = $string.contains(_pipe$3, "pi.compaction");
+  $should.be_true(_pipe$4);
+  let _pipe$5 = html;
+  let _pipe$6 = count_of(_pipe$5, "class=\"log-row\"");
+  return $should.equal(_pipe$6, 7);
+}
+
+export function the_rail_renders_one_card_per_space_with_its_state_test() {
+  let _block;
+  let _pipe = $view.view(browser_model());
+  _block = $element.to_string(_pipe);
+  let html = _block;
+  let _pipe$1 = html;
+  let _pipe$2 = count_of(_pipe$1, "space-card");
+  $should.equal(_pipe$2, 4);
+  let _pipe$3 = html;
+  let _pipe$4 = $string.contains(_pipe$3, "space-card selected");
+  $should.be_true(_pipe$4);
+  let _pipe$5 = html;
+  let _pipe$6 = $string.contains(_pipe$5, "reader");
+  $should.be_true(_pipe$6);
+  let _pipe$7 = html;
+  let _pipe$8 = $string.contains(_pipe$7, ">working<");
+  $should.be_true(_pipe$8);
+  let _pipe$9 = html;
+  let _pipe$10 = $string.contains(_pipe$9, "main · working");
+  $should.be_true(_pipe$10);
+  let _pipe$11 = html;
+  let _pipe$12 = $string.contains(_pipe$11, "conversation 2775");
+  return $should.be_true(_pipe$12);
+}
+
+export function the_search_box_searches_once_on_enter_test() {
+  let start = browser_model();
+  let $ = $wall.update(start, new $model.SearchChanged("brow"));
+  let typed = $[0];
+  let _pipe = typed.browser.search.query;
+  $should.equal(_pipe, "brow");
+  let _pipe$1 = typed.browser.search.asked;
+  $should.equal(_pipe$1, "");
+  let $1 = $wall.update(typed, new $model.SearchKeyed("Enter"));
+  let asked = $1[0];
+  let _pipe$2 = asked.browser.search.asked;
+  $should.equal(_pipe$2, "brow");
+  let _pipe$3 = asked.browser.search.loading;
+  $should.be_true(_pipe$3);
+  let $2 = $wall.update(
+    asked,
+    new $model.SearchArrived($fake.search_json("browser")),
+  );
+  let with_hits = $2[0];
+  let _pipe$4 = with_hits.browser.search.loading;
+  $should.be_false(_pipe$4);
+  let _pipe$5 = with_hits.browser.search.hits;
+  let _pipe$6 = $list.length(_pipe$5);
+  $should.equal(_pipe$6, 3);
+  let _pipe$7 = with_hits.browser.search.error;
+  $should.equal(_pipe$7, Option$None$const);
+  let _pipe$8 = $model.search_line(with_hits.browser.search);
+  $should.equal(_pipe$8, "3 hits for brow");
+  let _block;
+  let _pipe$9 = $view.view(with_hits);
+  _block = $element.to_string(_pipe$9);
+  let html = _block;
+  let _pipe$10 = html;
+  let _pipe$11 = count_of(_pipe$10, "class=\"hit\"");
+  $should.equal(_pipe$11, 3);
+  let _pipe$12 = html;
+  let _pipe$13 = $string.contains(_pipe$12, "main");
+  $should.be_true(_pipe$13);
+  let _pipe$14 = html;
+  let _pipe$15 = $string.contains(_pipe$14, "wall-ui");
+  return $should.be_true(_pipe$15);
+}
+
+export function an_empty_search_is_a_mistake_and_says_so_test() {
+  let $ = $wall.update(browser_model(), $model.Msg$SearchSubmitted$const);
+  let next = $[0];
+  let _pipe = next.browser.search.loading;
+  $should.be_false(_pipe);
+  let _pipe$1 = next.browser.search.asked;
+  $should.equal(_pipe$1, "");
+  let _pipe$2 = next.browser.search.error;
+  $should.equal(_pipe$2, new Some("type something to search for"));
+  let _pipe$3 = $model.search_line(next.browser.search);
+  $should.equal(_pipe$3, "search every conversation");
+  let $1 = $wall.update(browser_model(), new $model.SearchChanged("wall"));
+  let typed = $1[0];
+  let $2 = $wall.update(typed, $model.Msg$SearchSubmitted$const);
+  let asked = $2[0];
+  let $3 = $wall.update(asked, new $model.SearchArrived($fake.search_json("")));
+  let refused = $3[0];
+  let _pipe$4 = refused.browser.search.error;
+  $should.equal(_pipe$4, new Some("q is required"));
+  let _pipe$5 = refused.browser.search.loading;
+  return $should.be_false(_pipe$5);
+}
+
+export function arriving_conversations_selects_main_and_asks_for_it_test() {
+  let $ = $wall.update(
+    (() => {
+      let _record = $model.initial($model.Mode$LiveMode$const);
+      return new $model.Model(
+        _record.mode,
+        _record.vitals,
+        _record.spend,
+        _record.agents,
+        _record.queue,
+        _record.samples,
+        _record.polls,
+        _record.error,
+        $model.Tab$BrowserTab$const,
+        _record.filters,
+        _record.logs,
+        _record.browser,
+      );
+    })(),
+    new $model.ConversationsArrived($fake.conversations_json()),
+  );
+  let next = $[0];
+  let _pipe = next.browser.conversations;
+  let _pipe$1 = $list.length(_pipe);
+  $should.equal(_pipe$1, 4);
+  let _pipe$2 = next.browser.selected;
+  $should.equal(_pipe$2, new Some(1));
+  let _pipe$3 = next.browser.stream;
+  return $should.equal(_pipe$3, new Some($model.empty_logs()));
+}
+
+export function the_browser_tab_keeps_the_dashboard_and_logs_tabs_test() {
+  let _block;
+  let _pipe = $view.view($model.initial($model.Mode$LiveMode$const));
+  _block = $element.to_string(_pipe);
+  let html = _block;
+  let _pipe$1 = html;
+  let _pipe$2 = $string.contains(_pipe$1, ">BROWSER<");
+  $should.be_true(_pipe$2);
+  let _pipe$3 = html;
+  let _pipe$4 = $string.contains(_pipe$3, ">LOGS<");
+  $should.be_true(_pipe$4);
+  let _pipe$5 = $model.tab_label($model.Tab$BrowserTab$const);
+  return $should.equal(_pipe$5, "browser");
 }

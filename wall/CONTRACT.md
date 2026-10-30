@@ -233,6 +233,7 @@ first, every row carrying its raw record verbatim.
 
 ```
 GET /api/logs?before=<id>&limit=<n>&kind=<a,b>&dir=desc|asc&q=<text>
+              &conversation=<id>&around=<entry id>
 ```
 
 | param | default | notes |
@@ -242,9 +243,13 @@ GET /api/logs?before=<id>&limit=<n>&kind=<a,b>&dir=desc|asc&q=<text>
 | `kind` | all | comma list; `app.*` is a prefix, everything else an exact match |
 | `dir` | `desc` | order of the returned page only; selection is always the newest `limit` rows older than `before` |
 | `q` | none | substring search over the raw `record` text, `LIKE`-escaped (`%`, `_`, `\` are literal) |
+| `conversation` | the main space | round 4: one conversation's entries. **The only rejected parameter**: an id the ledger does not have is a `400`, because an empty page would look like an empty conversation |
+| `around` | none | round 4: a **window** of ±25 entries around this entry id, ascending, still filtered by `kind`/`q`. Paging forward from a window uses `before=<oldest id in the window>` |
 
-No parameter is ever rejected: out-of-range values clamp, an unknown `kind` simply
-matches nothing. The tail keeps working when the ledger does not.
+Apart from an unknown `conversation`, no parameter is ever rejected: out-of-range
+values clamp, an unknown `kind` simply matches nothing. The tail keeps working when
+the ledger does not. The default is the main conversation (the space no other
+conversation owns), so the LOGS tab's behaviour is unchanged by round 4.
 
 ```json
 {
@@ -275,10 +280,100 @@ matches nothing. The tail keeps working when the ledger does not.
   registry `/api/state` reads. Absent for the main conversation.
 - `spill` — the on-disk full output of a truncated tool result, when the record
   carries one.
-- `raw` — the record verbatim (a JSON string). The UI shows it in the row's
-  expander; the reader never re-serialises it.
+- `raw` — the record verbatim (a JSON string). The reader never re-serialises it;
+  the wall indents it **at render time** when it parses as JSON (and shows it
+  unchanged when it does not), so the expander is readable without the wire shape
+  changing.
 - `next_before` — pass as `&before=` for the next page; absent when the page reached
   the oldest entry.
+
+## GET /api/conversations
+
+Round 4, additive in v1: the browser's rail. One row per space — the main
+conversation plus one per child — derived from the `conversations` table, never from
+a hardcoded id.
+
+```
+GET /api/conversations
+```
+
+```json
+{
+  "v": 1,
+  "ok": true,
+  "error": null,
+  "generated_at": "2026-10-30T03:15:36.770Z",
+  "conversations": [
+    {
+      "id": 1,
+      "kind": "main",
+      "title": "main",
+      "state": "working",
+      "entries": 2263,
+      "first_at": "2026-10-28T12:18:23.587Z",
+      "last_at": "2026-10-30T03:15:33.112Z"
+    },
+    { "id": 2166, "kind": "child", "title": "reader", "state": "alive", "entries": 3, "first_at": "…", "last_at": "…" }
+  ]
+}
+```
+
+- `kind` — `"main"` for the space with no `owner_conversation_id` (the root), `"child"`
+  for everything else. There is exactly one `main`.
+- `title` — the subagent name from the `app.subagents` registry when the space is a
+  child (`reader`); `"main"` for the root; `"conversation <id>"` when the registry has
+  no name for it. Always a string.
+- `state` — an enum shared with `/api/state`'s `agents` block: `working`, `reporting`,
+  `alive`, `unknown`. Borrowed from the same machinery in `src/wall/agents.ts`, never
+  re-derived: a space whose name matches no live agent is `unknown`, a stale one
+  `alive`.
+- `entries` — `count(*)` over that conversation's `entries` rows.
+- `first_at`/`last_at` — oldest and newest entry stamps, `null` for an empty space.
+- Order is by `id`; the wall additionally pins `main` first.
+- An unreadable ledger is `200` with `ok:false` + `error`, so the rail can say why it
+  is empty instead of pretending there are no conversations.
+
+## GET /api/search
+
+Round 4, additive in v1: one search over **every** conversation, for the browser's
+jump list.
+
+```
+GET /api/search?q=<text>&kind=<a,b>&limit=<n>
+```
+
+| param | default | notes |
+| --- | --- | --- |
+| `q` | — | required; an empty or whitespace-only `q` is a `400` `q is required` (unlike `/api/logs`, there is no "everything" query) |
+| `kind` | all | the same vocabulary as `/api/logs` (`app.*` is a prefix) |
+| `limit` | `25` | clamped to `1…100` — no paging, the cap is the contract |
+
+```json
+{
+  "v": 1,
+  "ok": true,
+  "q": "compaction",
+  "limit": 25,
+  "hits": [
+    {
+      "conversation_id": 2166,
+      "conversation_title": "reader",
+      "entry_id": 4110,
+      "kind": "pi.assistant",
+      "at": "2026-10-29T14:30:00.000Z",
+      "text": "compaction: rounds one to three summarised"
+    }
+  ]
+}
+```
+
+- Newest first across all spaces. `text` is the same human line `/api/logs` builds;
+  matching is a substring over the raw record, `LIKE`-escaped (`q='like%'` finds a
+  literal `like%`, not a wildcard).
+- Every hit carries the conversation it came from, so the wall can switch the pane and
+  land on `entry_id` (via `/api/logs?conversation=&around=`).
+- A hit whose conversation has since vanished is still returned: the jump is refused
+  by `/api/logs`, not guessed at here.
 
 ## GET /api/spill
 
@@ -327,8 +422,19 @@ sample is only appended when the corresponding value is non-`null`.
 | **AGENTS** | `work: <in_flight> in flight · <queued> queued`; the pi-spike card; one card per named subagent (state badge, branch, worktree, last answer entry id); an orphans row (`N unnamed (prunable)` + `#anchor → c<conversation>` ids); a retired-anchor count when > 0 |
 | **QUEUE** | the same `work:` line in place of the old `tasks running` counter; inbox depth, tasks pending, unanswered, up to 10 recent errors |
 | **LOGS** (tab) | full-width ledger browser: newest first, live-tailed by the same 10 s poll; direction chips (`all` / `in` = `pi.user`, `out` = `pi.assistant` + `app.*`), one chip per kind (chips and direction intersect), a search box (`q=`), an `older` button that walks `before=`; each row is a `<details>`: human line, then the raw record as `<pre>`, then — when the entry has one — a `full output` expander that fetches `/api/spill` |
+| **BROWSER** (tab) | round 4: conversation-first navigation. A search box on top (`Enter` → `/api/search`, hits listed underneath with the space they live in, a date and the matched line; clicking one switches the pane and lands on a window around it, marked row). Left rail: one card per space (`title`, state badge, entry count, `first → last`), main pinned first, children by id, refreshed by the same 10 s poll. Main pane: the selected space's stream, rendered by the **same row renderer as LOGS**, with `pi.compaction` entries drawn as full-width dividers (`— summarized history begins —` / `— continues —`, summary text one click away) instead of rows. A window around a hit turns the tail off until `back to the tail` |
 
 ## Versioning
 
 `v` increments only for a breaking change; additive fields do not bump it. The UI
-ignores unknown fields and renders `—` for `null`.
+ignores unknown fields and renders `—` for `null`. Round 4 added two endpoints
+(`/api/conversations`, `/api/search`), two `/api/logs` parameters (`conversation`,
+`around`) and one UI tab, without changing any existing shape. Its three new shapes
+decode **tolerantly**: a wrong-typed or missing field on one conversation or one hit
+becomes `unknown`/`0`, so a single drifted row cannot blank the rail.
+
+## Zero daemon change
+
+Everything above is served from the SQLite ledger and the daemon's log file, read
+through a `query_only` handle. Round 4 added no writer, no table and no daemon hook: 
+the browser is a reader of what the daemon already records.

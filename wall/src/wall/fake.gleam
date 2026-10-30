@@ -235,3 +235,148 @@ fn escape(value: String) -> String {
   |> string.replace("\"", "\\\"")
   |> string.replace("\n", "\\n")
 }
+
+// --- the browser tab ------------------------------------------------------
+
+/// A plausible `/api/conversations` body: the main space with two compaction
+/// boundaries in its stream, and two named children — the demo the browser tab
+/// exists for, with no reader running.
+pub fn conversations_json() -> String {
+  "{\"v\":1,\"ok\":true,\"generated_at\":\"2026-10-29T14:31:02.512Z\",\"conversations\":["
+  <> space(1, "main", "main", "working", 2051, "2026-10-27T09:12:00.000Z", "2026-10-29T14:30:55.000Z")
+  <> ","
+  <> space(2166, "child", "reader", "working", 3, "2026-10-29T13:02:00.000Z", "2026-10-29T14:29:11.000Z")
+  <> ","
+  <> space(2402, "child", "wall-ui", "reporting", 1, "2026-10-29T14:11:00.000Z", "2026-10-29T14:12:30.000Z")
+  <> ","
+  <> space(2775, "child", "conversation 2775", "unknown", 1, "2026-10-29T14:20:00.000Z", "2026-10-29T14:20:40.000Z")
+  <> "]}"
+}
+
+fn space(
+  id: Int,
+  kind: String,
+  title: String,
+  state: String,
+  entries: Int,
+  first_at: String,
+  last_at: String,
+) -> String {
+  "{\"id\":"
+  <> int.to_string(id)
+  <> ",\"kind\":\""
+  <> kind
+  <> "\",\"title\":\""
+  <> title
+  <> "\",\"state\":\""
+  <> state
+  <> "\",\"entries\":"
+  <> int.to_string(entries)
+  <> ",\"first_at\":\""
+  <> first_at
+  <> "\",\"last_at\":\""
+  <> last_at
+  <> "\"}"
+}
+
+/// A plausible `/api/logs?conversation=N` page. The main space carries two
+/// `pi.compaction` rows so the dividers are visible in fake mode; the children
+/// carry their own small streams. Any other id gets an empty page, which is what
+/// an unknown space would show.
+pub fn browser_logs_json(conversation: Int, filters: model.LogFilters, poll: Int) -> String {
+  let base = 4110 + poll
+  let rows = case conversation {
+    1 -> [
+      #(base, "pi.assistant", "the browser tab is up", None, None),
+      #(base - 1, "pi.user", "steer: build the activity browser", None, None),
+      #(
+        base - 2,
+        "pi.compaction",
+        "compaction: rounds one to three summarised",
+        None,
+        None,
+      ),
+      #(
+        base - 3,
+        "pi.tool-result",
+        "bash: full output (18 bytes)",
+        None,
+        Some("/opt/pi-host/storage/spill/full.log"),
+      ),
+      #(base - 4, "pi.user", "steer: the wall needs a browser", None, None),
+      #(
+        base - 5,
+        "pi.compaction",
+        "compaction: the earlier rounds summarised again",
+        None,
+        None,
+      ),
+      #(base - 6, "pi.system", "system: preamble + 12 tools", None, None),
+    ]
+    2166 -> [
+      #(base, "pi.assistant", "child: the ledger looks fine", Some("reader"), None),
+      #(base - 1, "pi.user", "child: check the ledger", Some("reader"), None),
+      #(base - 2, "pi.user", "spawn reader", None, None),
+    ]
+    2402 -> [
+      #(base, "pi.assistant", "child: the browser tab renders", Some("wall-ui"), None),
+    ]
+    _ -> []
+  }
+  let kinds = model.effective_kinds(filters)
+  let kept =
+    list.filter(rows, fn(row) {
+      kind_selected(kinds, row.1) && text_matches(filters.query, row.2)
+    })
+  "{\"v\":1,\"ok\":true,\"entries\":["
+  <> string.join(list.map(kept, entry), ",")
+  <> "]"
+  <> case list.is_empty(kept) {
+    True -> ""
+    False -> ",\"next_before\":" <> int.to_string(base - 7)
+  }
+  <> "}"
+}
+
+/// A plausible `/api/search` body: hits across three spaces, so the jump list has
+/// somewhere to jump to without a reader running.
+pub fn search_json(query: String) -> String {
+  case string.trim(query) {
+    "" -> "{\"v\":1,\"ok\":false,\"error\":\"q is required\",\"hits\":[]}"
+    asked -> {
+      let corpus = [
+        #(4112, 1, "main", "pi.assistant", "the browser tab is up"),
+        #(4110, 1, "main", "pi.user", "steer: build the activity browser"),
+        #(4110, 2166, "reader", "pi.assistant", "child: the ledger looks fine"),
+        #(4109, 2166, "reader", "pi.user", "child: check the ledger"),
+        #(4110, 2402, "wall-ui", "pi.assistant", "child: the browser tab renders"),
+      ]
+      let hits =
+        list.filter(corpus, fn(hit) {
+          string.contains(string.lowercase(hit.4), string.lowercase(asked))
+        })
+      "{\"v\":1,\"ok\":true,\"q\":\""
+      <> escape(asked)
+      <> "\",\"limit\":25,\"hits\":["
+      <> string.join(list.map(hits, hit), ",")
+      <> "]}"
+    }
+  }
+}
+
+fn hit(row: #(Int, Int, String, String, String)) -> String {
+  let #(id, conversation, title, kind, text) = row
+  "{\"conversation_id\":"
+  <> int.to_string(conversation)
+  <> ",\"conversation_title\":\""
+  <> title
+  <> "\",\"entry_id\":"
+  <> int.to_string(id)
+  <> ",\"kind\":\""
+  <> kind
+  <> "\",\"at\":\"2026-10-29T14:30:"
+  <> pad2(id % 60)
+  <> ".000Z\",\"text\":\""
+  <> text
+  <> "\"}"
+}
