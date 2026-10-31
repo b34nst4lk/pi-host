@@ -207,7 +207,13 @@ export type SpendUsage = {
 export type SpendBalance = {
 	balance_usd: number | null;
 	purchased_usd: number | null;
+	/** Used share of the legacy **session** window (upstream reports what is left). */
 	percent_used: number | null;
+	/** Upstream's `session.resets_at`, verbatim (ISO 8601, UTC). */
+	session_resets_at: string | null;
+	/** Used share of the **weekly** window, same inversion; `null` when not reported. */
+	weekly_percent_used: number | null;
+	weekly_resets_at: string | null;
 	currency: string | null;
 	raw: unknown;
 };

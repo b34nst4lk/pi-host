@@ -152,9 +152,27 @@ pub fn decodes_a_reader_spend_test() {
   spend.requests |> should.equal(Some(126))
   spend.balance_usd |> should.equal(Some(0.0))
   spend.percent_used |> should.equal(Some(12.5))
+  spend.session_resets_at |> should.equal(Some("2026-10-29T18:05:00.000Z"))
+  spend.weekly_percent_used |> should.equal(Some(41.5))
+  spend.weekly_resets_at |> should.equal(Some("2026-11-02T00:00:00.000Z"))
   spend.cached |> should.equal(True)
   spend.stale |> should.equal(False)
   spend.error |> should.equal(None)
+}
+
+pub fn quota_bars_say_nothing_when_a_window_is_missing_test() {
+  let assert Ok(spend) = decode.spend(
+    "{\"v\":1,\"ok\":true,\"balance\":{\"percent_used\":50}}",
+  )
+  spend.percent_used |> should.equal(Some(50.0))
+  spend.session_resets_at |> should.equal(None)
+  spend.weekly_percent_used |> should.equal(None)
+  format.format_resets_at(spend.weekly_resets_at) |> should.equal("")
+  format.format_resets_at(None) |> should.equal("")
+  format.format_resets_at(Some("2026-11-02T00:00:00.000Z"))
+  |> should.equal(" · resets 11-02 00:00")
+  // A stamp too short to slice comes back as itself, never as a crash.
+  format.format_resets_at(Some("soon")) |> should.equal(" · resets soon")
 }
 
 pub fn tolerates_missing_fields_test() {
@@ -177,6 +195,7 @@ pub fn spend_without_money_is_unknown_not_zero_test() {
   let assert Ok(spend) = decode.spend("{\"v\":1,\"ok\":true,\"usage\":{\"requests\":3}}")
   spend.requests |> should.equal(Some(3))
   spend.balance_usd |> should.equal(None)
+  spend.weekly_percent_used |> should.equal(None)
   format.format_usd(spend.balance_usd) |> should.equal("—")
 }
 

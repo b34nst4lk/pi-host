@@ -200,23 +200,31 @@ export function mapBalance(body: unknown): SpendBalance {
 	const purchased = record && isRecord(record.purchased) ? record.purchased : null;
 	const included = record && isRecord(record.included) ? record.included : null;
 	const session = included && isRecord(included.session) ? included.session : null;
-	// Upstream reports what is *left* (session and weekly windows); the contract asks
-	// what is used, so the session's remaining percent is inverted. No session window
-	// means we say nothing rather than invent a percentage.
-	const remaining =
-		firstNumber(session, ["remaining_percent", "remainingPercent"]) ??
-		firstNumber(record, ["remaining_percent"]);
+	const weekly = included && isRecord(included.weekly) ? included.weekly : null;
+	// Upstream reports what is *left* in both windows (session and weekly); the
+	// contract asks what is used, so each remaining percent is inverted. A window we
+	// were not given says nothing rather than inventing a percentage.
+	const remaining = (window: Record<string, unknown> | null): number | null =>
+		firstNumber(window, ["remaining_percent", "remainingPercent"]);
 	const percent =
 		firstNumber(record, ["percent_used", "percentUsed", "used_percent"]) ??
 		firstNumber(purchased, ["percent_used", "percentUsed"]) ??
-		(remaining === null ? null : Math.round((100 - remaining) * 100) / 100);
+		used(remaining(session) ?? firstNumber(record, ["remaining_percent"]));
 	return {
 		balance_usd: firstNumber(record, ["balance_usd", "balanceUsd", "balance"]) ?? firstNumber(purchased, ["balance_usd"]),
 		purchased_usd: firstNumber(purchased, ["purchased_usd", "amount_usd"]),
 		percent_used: percent,
+		session_resets_at: str(session?.resets_at),
+		weekly_percent_used: used(remaining(weekly)),
+		weekly_resets_at: str(weekly?.resets_at),
 		currency: str(record?.currency) ?? "USD",
 		raw: body,
 	};
+}
+
+/** What is used, from what is left; two decimals, `null` stays `null`. */
+function used(remaining: number | null): number | null {
+	return remaining === null ? null : Math.round((100 - remaining) * 100) / 100;
 }
 
 function firstNumber(record: Record<string, unknown> | null, keys: readonly string[]): number | null {

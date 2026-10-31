@@ -135,6 +135,9 @@ fn spend_decoder() -> decode.Decoder(model.Spend) {
   use output_tokens <- optional_int_at(["usage", "output_tokens"])
   use balance_usd <- optional_float_at(["balance", "balance_usd"])
   use percent_used <- optional_float_at(["balance", "percent_used"])
+  use session_resets_at <- optional_string_at(["balance", "session_resets_at"])
+  use weekly_percent_used <- optional_float_at(["balance", "weekly_percent_used"])
+  use weekly_resets_at <- optional_string_at(["balance", "weekly_resets_at"])
   use used_in_window <- optional_int_at(["limits", "used_in_window"])
   use max_per_minute <- optional_int_at(["limits", "max_per_minute"])
   use cached <- field_or("cached", False, decode.bool)
@@ -146,6 +149,9 @@ fn spend_decoder() -> decode.Decoder(model.Spend) {
     output_tokens: output_tokens,
     balance_usd: balance_usd,
     percent_used: percent_used,
+    session_resets_at: session_resets_at,
+    weekly_percent_used: weekly_percent_used,
+    weekly_resets_at: weekly_resets_at,
     used_in_window: used_in_window,
     max_per_minute: max_per_minute,
     cached: cached,

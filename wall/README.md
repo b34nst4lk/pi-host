@@ -55,7 +55,7 @@ proves the model → decode → view chain, not a parallel code path.
 | `src/wall/update_logs.gleam` | the LOGS tab's half of `update`: filters, page arrivals, the spill reader, and their effects |
 | `src/wall/update_browser.gleam` | the BROWSER tab's half of `update`: picker, search submit, jump to a hit, back to the tail |
 | `src/wall/model.gleam` | the contract types, `Msg`/`Model`/`initial`, the sample ring buffer, sparkline maths, the agent-state and projects views |
-| `src/wall/format.gleam` | pure formatters (counts, bytes, ages, dollars, percents) — no contract types, so anything may import it |
+| `src/wall/format.gleam` | pure formatters (counts, bytes, ages, dollars, percents, reset stamps) — no contract types, so anything may import it |
 | `src/wall/logs.gleam` | logs-tab types (`Tab`, `Direction`, `LogFilters`, `Logs`) and the pure helpers: filter intersection, path building, row summaries |
 | `src/wall/browser.gleam` | picker/window/search types and the pure transitions: rail ordering, selection, jump/anchor, row options |
 | `src/wall/decode.gleam` | defensive JSON → model (`None`/`"unknown"` for anything odd) |

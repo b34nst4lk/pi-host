@@ -72,12 +72,22 @@ pub fn spend_card(current: model.Model) -> Element(model.Msg) {
             <> format.format_count(spend.max_per_minute),
           ),
           ui.budget(
-            "balance used",
+            "session quota",
             case spend.percent_used {
               Some(percent) -> format.budget_fraction(Some(ui.float_round(percent)), Some(100))
               None -> 0.0
             },
-            format.format_percent(spend.percent_used),
+            format.format_percent(spend.percent_used)
+            <> format.format_resets_at(spend.session_resets_at),
+          ),
+          ui.budget(
+            "weekly quota",
+            case spend.weekly_percent_used {
+              Some(percent) -> format.budget_fraction(Some(ui.float_round(percent)), Some(100))
+              None -> 0.0
+            },
+            format.format_percent(spend.weekly_percent_used)
+            <> format.format_resets_at(spend.weekly_resets_at),
           ),
           ui.stat("balance", format.format_usd(spend.balance_usd)),
           html.span([attribute.class(ui.cache_class(spend))], [

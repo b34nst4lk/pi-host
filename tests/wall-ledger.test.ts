@@ -82,13 +82,24 @@ describe("spend", () => {
 		expect(usage.input_tokens).toBeNull();
 
 		const balance = mapBalance({
-			included: { session: { remaining_percent: 48.56 } },
+			included: {
+				session: { remaining_percent: 48.56, resets_at: "2026-10-29T18:05:00.000Z" },
+				weekly: { remaining_percent: 90, resets_at: "2026-11-02T00:00:00.000Z" },
+			},
 			purchased: { balance_usd: 0 },
 		});
 		expect(balance.balance_usd).toBe(0);
 		expect(balance.percent_used).toBeCloseTo(51.44, 2);
-		// No session window: say nothing rather than invent a percentage.
-		expect(mapBalance({ purchased: { balance_usd: 1 } }).percent_used).toBeNull();
+		expect(balance.session_resets_at).toBe("2026-10-29T18:05:00.000Z");
+		// The weekly window is a second, independent quota: 90% left is 10% used.
+		expect(balance.weekly_percent_used).toBeCloseTo(10, 2);
+		expect(balance.weekly_resets_at).toBe("2026-11-02T00:00:00.000Z");
+		// No session or weekly window: say nothing rather than invent a percentage.
+		const bare = mapBalance({ purchased: { balance_usd: 1 } });
+		expect(bare.percent_used).toBeNull();
+		expect(bare.weekly_percent_used).toBeNull();
+		expect(bare.weekly_resets_at).toBeNull();
+		expect(bare.session_resets_at).toBeNull();
 	});
 
 	it("serves the cache inside the TTL and refreshes after it", async () => {

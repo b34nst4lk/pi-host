@@ -254,6 +254,9 @@ minute**, and on upstream `429` serves the cache with `stale:true` (never a 500)
     "balance_usd": 0,
     "purchased_usd": 0,
     "percent_used": 12.5,
+    "session_resets_at": "2026-10-29T18:05:00.000Z",
+    "weekly_percent_used": 41.5,
+    "weekly_resets_at": "2026-11-02T00:00:00.000Z",
     "currency": "USD",
     "raw": {}
   }
@@ -264,6 +267,12 @@ minute**, and on upstream `429` serves the cache with `stale:true` (never a 500)
   `request_count` for usage and legacy percentages plus `purchased.balance_usd` for
   balance). `raw` carries the upstream object verbatim so the UI can show what is
   really there; it is not rendered by default.
+- `percent_used` is the **session** window's used share and `weekly_percent_used` the
+  **weekly** window's, both inverted from the upstream's `remaining_percent` (an
+  explicit upstream `percent_used`, when present, wins for the session).
+  `session_resets_at` / `weekly_resets_at` are the upstream `resets_at` stamps
+  verbatim (ISO 8601, UTC); the wall prints them as `MM-DD HH:MM`. A window the
+  upstream did not report is `null` in all three, never a made-up percentage.
 - `cached` — this response came from cache. `stale` — cache served because upstream
   failed or rate-limited us; `error` then holds one line (`"upstream 429; serving cache
   from 12s ago"`).
@@ -462,7 +471,7 @@ sample is only appended when the corresponding value is non-`null`.
 | section | contents |
 | --- | --- |
 | **VITALS** | ledger entries + size, sparkline of entries; sync freshness (state colour, `age_s`, batch, seq); daemon log size + `errors_24h` + last error line; container uptime |
-| **SPEND** | requests / input / output tokens for 24 h, sparkline of requests; budget bars: upstream calls `used_in_window/10` per minute, `percent_used` of the balance; `cached`/`stale` badge |
+| **SPEND** | requests / input / output tokens for 24 h, sparkline of requests; budget bars: upstream calls `used_in_window/10` per minute, then the two quotas — `percent_used` (session) and `weekly_percent_used`, each value line carrying `· resets MM-DD HH:MM` when the reader sent a stamp; `cached`/`stale` badge |
 | **AGENTS** | `work: <in_flight> in flight · <queued> queued`; the pi-spike card; one card per named subagent (state badge, branch, worktree, last answer entry id); an orphans row (`N unnamed (prunable)` + `#anchor → c<conversation>` ids); a retired-anchor count when > 0 |
 | **QUEUE** | the same `work:` line in place of the old `tasks running` counter; inbox depth, tasks pending, unanswered, up to 10 recent errors |
 | **LOGS** (tab) | full-width ledger browser: newest first, live-tailed by the same 10 s poll; direction chips (`all` / `in` = `pi.user`, `out` = `pi.assistant` + `app.*`), one chip per kind (chips and direction intersect), a search box (`q=`), an `older` button that walks `before=`; each row is a `<details>`: human line, then the raw record as `<pre>`, then — when the entry has one — a `full output` expander that fetches `/api/spill` |

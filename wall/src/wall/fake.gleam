@@ -170,9 +170,10 @@ pub fn spend_json(poll: Int) -> String {
   <> ",\"input_tokens\":1234567,\"output_tokens\":"
   <> int.to_string(98765 + poll * 120)
   <> ",\"raw\":{}},"
-  <> "\"balance\":{\"balance_usd\":0,\"purchased_usd\":0,\"percent_used\":"
-  <> string.concat([int.to_string(12), ".5"])
-  <> ",\"currency\":\"USD\",\"raw\":{}}}"
+  <> "\"balance\":{\"balance_usd\":0,\"purchased_usd\":0,\"percent_used\":12.5,"
+  <> "\"session_resets_at\":\"2026-10-29T18:05:00.000Z\","
+  <> "\"weekly_percent_used\":41.5,\"weekly_resets_at\":\"2026-11-02T00:00:00.000Z\","
+  <> "\"currency\":\"USD\",\"raw\":{}}}"
 }
 
 // --- the logs tab ---------------------------------------------------------

@@ -101,6 +101,24 @@ pub fn budget_fraction(used: Option(Int), limit: Option(Int)) -> Float {
 
 
 
+/// `""` when unknown, ` · resets 10-29 14:31` when the reader sent a stamp: the
+/// suffix a quota bar appends to its percentage. Upstream sends ISO 8601 in UTC,
+/// so the wall shows UTC too rather than guessing a zone.
+pub fn format_resets_at(value: Option(String)) -> String {
+  case value {
+    None -> ""
+    Some(stamp) -> " · resets " <> clock(stamp)
+  }
+}
+
+/// `2026-10-29T14:31:02.512Z` → `10-29 14:31`; a shorter stamp survives as itself.
+fn clock(stamp: String) -> String {
+  case string.length(stamp) >= 16 {
+    True -> string.slice(stamp, 5, 5) <> " " <> string.slice(stamp, 11, 5)
+    False -> stamp
+  }
+}
+
 /// One decimal place, with a trailing `.0` dropped: `1.2`, `3`, `5.6`.
 fn one_decimal(value: Float) -> String {
   let tenths = float.round(value *. 10.0)

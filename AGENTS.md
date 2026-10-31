@@ -3,7 +3,9 @@
 Host for a durable agent harness: TypeScript daemon (`src/`) that steers pi-durable
 conversations from Matrix, plus `wall/` — a read-only Gleam/lustre dashboard over the
 ledger. Gates: `npm run gates` (`typecheck` + `test` + `fsize`), and `cd wall && gleam
-test`; artifacts in `wall/assets` are committed, `wall/build/` is not.
+test` (gleam lives in `~/.local/bin`; when the sandbox lacks it, say so and leave
+`wall/assets` for a host that has it, since `./build.sh` regenerates them); artifacts
+in `wall/assets` are committed, `wall/build/` is not.
 
 ## Skills
 
