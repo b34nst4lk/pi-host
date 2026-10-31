@@ -2,7 +2,7 @@
 
 One page to orient a fresh session. Everything else hangs off pointers from here.
 Ops truth lives in the homeserver doc (`~/home_server/docs/009-pi-host/README.md`);
-numbered lessons in `docs/plan-and-lessons.md` (read its table first); house rules
+the 19 numbered lessons in `docs/plan-and-lessons.md` (read §4 first); house rules
 the agents live by in root `AGENTS.md`.
 
 ## What pi-host is (60 seconds)
@@ -84,7 +84,7 @@ same ledger. Containers: `pi-host` (the daemon, rw) + `pi-wall` (all mounts ro).
 - `scripts/run-container-daemon.sh`, `run-host-daemon.sh` — the runners
   (container one is what compose calls).
 - `tests/` — vitest (the pure logic); `wall/tests` + `gleam test` for the wall.
-- `docs/plan-and-lessons.md` — the 17 numbered lessons (READ FIRST).
+- `docs/plan-and-lessons.md` — the 19 numbered lessons (READ FIRST).
 - `THERMONUCLEAR-REVIEW.md`, `skills/` — pi-spike's self-review regime.
 
 ## Ops runbook
@@ -118,7 +118,8 @@ same ledger. Containers: `pi-host` (the daemon, rw) + `pi-wall` (all mounts ro).
    reviews adversarially, commits, restarts containers.
 8. `NODE_OPTIONS=--dns-result-order=ipv4first` (IPv6 edge lesson).
 9. Steering room = pi-steer; agent answers thread off live `lastInbound`.
-10. Union-semantics steer cursor (spam-proof); sync cursor per room.
+10. Union-semantics steer cursors (spam-proof, per conversation); one `/sync`
+    cursor spans every room (`$`-global event ids).
 11. Mid-run invites auto-join; unbound rooms stay silent.
 12. fsize gate: no file > 5,000 tokens (chars/4 heuristic; `scripts/fsize.mjs`).
 13. Gleam targets javascript only; wall has zero npm deps.

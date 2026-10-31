@@ -1,7 +1,9 @@
 # pi-host: design plan & lessons
 
-Status: phase 0 live (production daemon running), tools phase approved.
-This document records the final state of decisions. Date: 2026-10-28.
+Status: production daemon live — host-run 2026-10-28, containerized 2026-10-29;
+multi-project phase live 2026-10-30 (room router, project registry, anchored
+project agents). This document records the final state of decisions.
+Date: 2026-10-28; §2–§3 and §6 re-aligned to docs/HANDOFF.md on 2026-10-31.
 
 ## 1. What pi-host is
 
@@ -29,7 +31,9 @@ multi-project agent steered from Matrix" end goal (see §6 roadmap).
 ### One process owns storage and the Matrix connection
 
 pi-durable's contract is "one process owns a storage at a time," so the daemon
-is both the harness host and the Matrix client. No external broker.
+is both the harness host and the Matrix client. No external broker. The Wall
+(`pi-wall` container) is a read-only WAL viewer over the same ledger — one
+writer, one reader, still one Matrix client.
 
 ### Matrix surface: raw CS API, no SDK
 
@@ -38,18 +42,29 @@ is both the harness host and the Matrix client. No external broker.
 - **Must send a User-Agent** — Cloudflare in front of `matrix.jacks.im`
   rejects UA-less clients (undici/node send none) with error 1010.
 - Deployment: bot account `@pi-spike:jacks.im` (local conduit user, sibling to
-  the other household bots), homeserver reached at `https://matrix.jacks.im`
-  (cloudflared). v0 room is **non-encrypted**; E2EE is a later upgrade
-  (bot accounts without cross-signing fight encryption — pi-courier's
-  documented experience).
+  the other household bots). The daemon reaches the homeserver inside the
+  docker network at `http://conduit:6167` — no Cloudflare hop;
+  `https://matrix.jacks.im` (cloudflared) is the outside answer. v0 rooms are
+  **non-encrypted**; E2EE is a later upgrade (bot accounts without
+  cross-signing fight encryption — pi-courier's documented experience).
 
-### Room scoping: the bot is a plain user in the wider household
+### Room scoping: routed rooms, silent everywhere else (multi-project since 2026-10-30)
 
-pi-spike may be invited anywhere; it idles silently. **Only the configured room
-steers.** Sync events carry their room id; the daemon accepts events whose room
-matches the configured form or the homeserver-resolved id. The allowlist
-(`MATRIX_ALLOWED_USERS`) doubles as protection: the bot's own messages are
-ignored because the bot is not in the allowlist.
+pi-spike may be invited anywhere; it idles silently. Routing is a pure decision
+(`routeRoom`, `src/rooms.ts`), derived from the project registry on EVERY event
+(a mid-run bind must not send the next message to the wrong conversation):
+
+- a **bound room** (a project's room) submits into that project's conversation;
+- the **configured room** submits into pi-spike's own conversation;
+- every other joined room steers nothing — **except `/project`**, the one
+  command read in an unbound room, because binding is how a room joins.
+
+A bound room wins over the configured one: binding the configured room to a
+project is an explicit act, so it means what it says (pi-steer is currently
+double-bound this way; the shared-room selector is a HANDOFF open item).
+Mid-run invites auto-join. The allowlist (`MATRIX_ALLOWED_USERS`) still
+doubles as protection: the bot's own messages are ignored because the bot is
+not in the allowlist.
 
 ### Steering semantics
 
@@ -57,25 +72,40 @@ ignored because the bot is not in the allowlist.
 |---|---|
 | plain text | durable input (queues as follow-up when busy) |
 | `/steer <text>` | steers the live run (`whenBusy: "steer"`) |
-| `/stop` | `root.abort()` — withdraws queued, marks live tasks; background work survives |
-| `/status` | pending + inbox counts posted to the room |
+| `/stop` | aborts the conversation its room routes to (project or pi-spike) — withdraws queued, marks live tasks; background/subagent work survives |
+| `/status` | pending + inbox counts for the room's conversation, posted to the room |
 | `/note <text>` | appends an entry without asking the model (`app.matrix-note`) |
+| `/usage [24h\|7d\|30d] [models]` | Ollama account usage (request counts, no USD — the live API differs from docs, §6 item 5) |
+| `/balance` | Ollama account balance (legacy session/weekly percent shape) |
+| `/models` | the Ollama Cloud model list |
+| `/embed <text>` | one embedding via the local Ollama (KNOWN GAP: fails from the container until the host Ollama listens past 127.0.0.1 — HANDOFF open items) |
+| `/project new <name> [path]` | scaffold (mkdir + git init + starter `AGENTS.md`) and bind the room it was typed in |
+| `/project bind <name> <path>` | bind the room it was typed in to an existing directory (same command rebinds — upsert) |
+| `/project list` | the registry: every project, its room, its conversation, its cwd |
 
 Settings: `followUpMode: "all"`, `steeringMode: "all"` (all queued items placed
-at each boundary).
+at each boundary). Ollama-answer commands run out-of-band, never in the sync
+loop's path; every command works in any bound room, and `/project` in any room
+at all — that is the bind path.
 
-### Replies: durable-cursor reply pump
+### Replies: per-room durable-cursor reply pumps
 
-`createReplyPump` watches the transcript and delivers assistant texts to the
-room. The cursor (`app.steer-cursor` conversation doc) advances **only for
-delivered** entries: a failed send stays outside the cursor and is retried on
-the next watch tick or next boot. At-least-once delivery; duplicate chat lines
-are harmless, lost answers are not.
+One pump per watched conversation (`src/pumps.ts`), built at boot and grown by
+every successful bind; each carries one conversation's answers into that
+conversation's room. The per-conversation cursor (`app.steer-cursor` doc) is a
+**union of delivered ids** (the lesson-13 fix), capped at 200 — a floor, not an
+archive — and advances **only for delivered** entries: a failed send stays
+outside the cursor and is retried on the next watch tick or next boot.
+At-least-once delivery; duplicate chat lines are harmless, lost answers are
+not. Replies thread onto the room's newest accepted inbound (`lastInbound`,
+read at send time) via `m.in_reply_to`.
 
 ### Sync cursor persistence + first-boot skip (live since 2026-10-28)
 
 The `/sync` `since` batch and the ids of ingested events (capped at 200) live in
-an `app.sync-state` conversation doc. On **first boot with no stored batch**, the
+an `app.sync-state` conversation doc; one cursor and one seen list span every
+room, because Matrix event ids are `$`-global. On **first boot with no stored
+batch**, the
 daemon performs an initial sync, marks the backlog seen, and **skips** it: only
 messages sent after the daemon is up steer it. Restarts resume from the stored
 batch; a homeserver replay of already-ingested events (e.g. after a conduit
@@ -88,23 +118,28 @@ unit-tested.
 
 - The built-in `CodingTools` extension (read/write/edit/bash) is installed in
   the registry; tools run through `NodeExecutionEnv` built per call from the
-  conversation's agent `cwd` (`src/env.ts`), defaulting to the sandbox
-  workspace (`PI_HOST_SANDBOX`, default `./workspace`, gitignored).
-- **Trust posture (decided)**: v1 runs tools as the host user, allowlist-scoped
-  (only `@jacksim:jacks.im` can trigger), cwd-scoped by convention —
-  `NodeExecutionEnv` is *not* a sandbox (observed live 2026-10-28: reads roamed
-  the host; writes stayed in-bounds only by model path choice). Hardening later:
-  dedicated low-priv user for the daemon, or container-per-conversation via the
-  existing docker-socket-proxy workshop.
+  conversation's agent `cwd` (`src/env.ts`): the main conversation defaults to
+  the sandbox workspace (`PI_HOST_SANDBOX` — `/opt/pi-host/workspace` in the
+  container, gitignored), project conversations run in their project `cwd`,
+  and subagents in their worktrees.
+- **Trust posture (decided)**: v1 runs tools as the container user `1000:1000`
+  — which IS the host user, because the repo tree and the projects tree are
+  bind-mounted rw — allowlist-scoped (only `@jacksim:jacks.im` can trigger),
+  cwd-scoped by convention. `NodeExecutionEnv` is *not* a sandbox (observed
+  live 2026-10-28, pre-container: reads roamed the host; writes stayed
+  in-bounds only by model path choice). Hardening later: dedicated low-priv
+  user for the daemon, or container-per-conversation via the existing
+  docker-socket-proxy workshop.
 
 ### Credentials & key hygiene (non-negotiable rules)
 
 - Secrets exist only as env vars staged at runtime from tmpfs
   (`/dev/shm/pi-host/`), never in files in the repo, argv, chats, or logs.
-- `scripts/run-host-daemon.sh` reads staged files and **exports** env
-  (`exec`), so values never appear in `ps`/`pgrep` output. Never compose
-  `timeout env SECRET=...` — argv leaks (this exact mistake caused the
-  2026-10-28 token leak; see §4).
+- The runners — `scripts/run-host-daemon.sh` (host fallback) and
+  `scripts/run-container-daemon.sh` (what compose calls) — read staged files
+  and **export** env (`exec`), so values never appear in `ps`/`pgrep` output.
+  Never compose `timeout env SECRET=...` — argv leaks (this exact mistake
+  caused the 2026-10-28 token leak; see §4).
 - Matrix tokens are per-device session credentials: rotation = mint new login →
   re-stage → log out old device. Conduit's `reset-password` changes the login
   password and does **not** kill sessions.
@@ -114,14 +149,16 @@ unit-tested.
 
 | item | value |
 |---|---|
-| homeserver | `https://matrix.jacks.im` (conduit v0.10.13, container `conduit`, no published port) |
+| homeserver | `https://matrix.jacks.im` (conduit v0.10.13, container `conduit`, no published port); the daemon reaches it at `http://conduit:6167` inside `home_server_home_server-network` |
 | bot account | `@pi-spike:jacks.im`, created via admin room `create-user` |
 | current device | `kuXTZRiS9u` ("pi-host daemon") |
-| steering room | `!ig3PmgqC-rUdJMNvo6sfPHRtUlIMaeU8XqidpXpufmU` (private, non-encrypted) |
+| rooms | pi-steer `!ig3PmgqC-rUdJMNvo6sfPHRtUlIMaeU8XqidpXpufmU` = pi-spike's configured room, currently ALSO bound to the pi-host project (bound-wins; shared-room selector open) — private, non-encrypted; project rooms live in the `app.projects` registry |
 | steerer | `@jacksim:jacks.im` only |
-| model | `deepseek-v4.1-flash` via Ollama Cloud (`https://ollama.com/v1`, custom pi-ai provider, `reasoning: false`) |
+| model | `deepseek-v4.1-flash` via Ollama Cloud (`https://ollama.com/v1`, custom pi-ai provider, `reasoning: false`); subagent default `glm-5.3-flash`, max 40 turns (`SUBAGENT_*` env-overridable) |
 | durable ledger | `pi-host/storage/session.sqlite` (WAL); debug-era ledger archived at `storage/debug-archive-20261028/` |
-| run | `scripts/run-host-daemon.sh '<room>' '<allowed-users>'` (pane %13, tmux session 2) |
+| run | container `pi-host` (compose: `deploy/docker-compose.yml`, image `pi-host:runtime`, `restart: unless-stopped`); host fallback `scripts/run-host-daemon.sh` — only with the container stopped (one-owner rule) |
+| repo | `~/hermes-users/jacksim/workspace/projects/pi-host/` (in-container `/opt/pi-host`, also visible as `/opt/projects/pi-host`); GitHub `b34nst4lk/pi-host`, private, `main` |
+| wall | `pi-wall` container: read-only dashboard over the same ledger (`dash.jacks.im`; `pi-wall:8091` on the shared network) |
 | admin | conduit admin room works via `@conduit:jacks.im <command>` (create-user, reset-password, …) |
 
 ## 4. Lessons (kept, de-iterated)
@@ -253,11 +290,21 @@ unit-tested.
 3. Live sequence: `/steer` mid-generation → `/status` → `/stop` — **DONE 2026-10-28** (steer verified on the tic-tac-toe run; stop ledger-verified: live run aborted, submission withdrawn `unanswered (aborted)`, no leak).
 4. ~~`kill -9` mid-generation with a live model~~ **DONE 2026-10-28** — audit-2 roadmap item closed on the real rig: task SIGKILLed at `phase=request`, daemon restarted, `resume()` restarted the interrupted generation from its committed checkpoint, and the run continued to completion (a multi-turn Gleam tic-tac-toe build). Compaction fired after nearly every tool round (756K in / 708K cacheRead / 105K out tokens for the session).
 5. ~~Ollama account APIs as room commands~~ **DONE 2026-10-28** (`/usage`, `/balance`, `/models`, `/embed`; `src/ollama_api.ts` + `src/core/ollama-format.ts`, 33 tests). Live reality differed from the docs in three ways worth remembering: this plan's `/api/usage` reports `request_count` only (no `usage_usd`, no token counters), `groups` are nested in `totals`/`buckets` rather than top-level, and `/api/balance` returns the legacy `session`/`weekly` percent shape. Formatters treat every metric as optional for that reason.
-6. ~~Containerize the daemon on `home_server_home_server-network` (conduit DNS), tmpfs key chain in compose~~ **DONE-PREP 2026-10-29** — authored, not cut over: `deploy/docker-compose.yml` (interim: pre-pulled `node:26-slim` + repo bind mount, `user: "1000:1000"`, secrets as a read-only bind of `/dev/shm/pi-host` at `/run/secrets`, `restart: unless-stopped` covering the old systemd-style restart policy), `scripts/run-container-daemon.sh`, `docker/Dockerfile` (the build path a host session holding `BUILD` would use). Probed from the sandbox socket (BUILD=403 there, so no build was attempted): `node:26-slim` pulls; a container on that network resolves `conduit:6167` (`OK v1.12`); the tree's tsx imports `src/` on node v26.13.0 and `vitest` passes 33/33 inside it, so no `node:22-slim` fallback is needed; `/run/secrets` shows both files `0600` (32 B / 59 B) readable at uid 1000. Two facts that corrected the plan: the repo lives at `/home/jacksim/hermes-users/jacksim/workspace/projects/pi-host` (there is no `/opt/workspace/pi-host`), and the *host shell* cannot resolve `conduit` at all — only containers on the network can, which is exactly why the containerized daemon drops the Cloudflare hop. Cutover (stop host daemon → `docker compose up -d` → `docker logs` for `harness up`) is Jack's step.
+6. ~~Containerize the daemon on `home_server_home_server-network` (conduit DNS), tmpfs key chain in compose~~ **DONE 2026-10-29** — authored, probed, cut over: `deploy/docker-compose.yml` (interim: pre-pulled `node:26-slim` + repo bind mount, `user: "1000:1000"`, secrets as a read-only bind of `/dev/shm/pi-host` at `/run/secrets`, `restart: unless-stopped` covering the old systemd-style restart policy), `scripts/run-container-daemon.sh`, `docker/Dockerfile` (the build path a host session holding `BUILD` would use). Probed from the sandbox socket (BUILD=403 there, so no build was attempted): `node:26-slim` pulls; a container on that network resolves `conduit:6167` (`OK v1.12`); the tree's tsx imports `src/` on node v26.13.0 and `vitest` passes 33/33 inside it, so no `node:22-slim` fallback is needed; `/run/secrets` shows both files `0600` (32 B / 59 B) readable at uid 1000. Two facts that corrected the plan: the repo lives at `/home/jacksim/hermes-users/jacksim/workspace/projects/pi-host` (there is no `/opt/workspace/pi-host`), and the *host shell* cannot resolve `conduit` at all — only containers on the network can, which is exactly why the containerized daemon drops the Cloudflare hop. Cutover (stop host daemon → `docker compose up -d` → `docker logs` for `harness up`) completed the same day. Follow-ons 2026-10-30: compose mounts the projects tree (`/opt/projects`), the repo moved under `~/hermes-users/…/projects/` (path refs updated), mid-run invites auto-join.
 7. Real tasks: `defineTask` builds in the workspace (background tasks,
    `sleepUntil` scheduling) — the "build in the background" capability.
-8. Multi-project: project registry as session docs, one conversation per
-   project, per-project cwd/env — the workshop pattern
-   (docker-socket-proxy Phase B is already live on the host).
+   **PARTIAL**: `defineTask` is live for anchors and subagent reporters
+   (`src/anchor.ts`, `src/subagent-reporter.ts`); `sleepUntil`-scheduled
+   proactive acts (the daily digest) remain backlog — HANDOFF open items.
+8. ~~Multi-project: project registry as session docs, one conversation per
+   project, per-project cwd/env~~ **DONE 2026-10-30** — `src/projects.ts`
+   (registry `app.projects`, project marker `app.project`, anchored project
+   agents re-reading their own `AGENTS.md` every request), `src/rooms.ts`
+   (pure `routeRoom`), room-per-project direct routing; anchored subagents
+   (worktree-default, hold-on-completion, exactly-once reporting) shipped
+   alongside. Three projects live as of 2026-10-31: fourier, pi-host,
+   pr-review-workflow (HANDOFF live state). Per-conversation container
+   isolation (docker-socket-proxy) remains future hardening.
 9. E2EE upgrade (matrix crypto stack) if encrypted-room steering is ever
-   needed.
+   needed. (Live evidence 2026-10-30: fourier's first bind attempt in an
+   encrypted room failed silently — steering rooms stay non-encrypted.)
