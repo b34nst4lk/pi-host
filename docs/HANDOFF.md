@@ -32,9 +32,11 @@ same ledger. Containers: `pi-host` (the daemon, rw) + `pi-wall` (all mounts ro).
   **fourier** `!YWb7NkaPRWgej133TSq7JCcJ7q4CmIxX9QNH3O6D3OU` = the fourier project.
   Other rooms = silently ignored; only `@jacksim:jacks.im` may steer
   (`MATRIX_ALLOWED_USERS`).
-- Registry (ledger `app.projects`): fourier → conv 6884, cwd `/opt/projects/fourier`,
-  instructions `/opt/projects/fourier/AGENTS.md`; pi-host → conv 6954, cwd
-  `/opt/projects/pi-host`, instructions `/opt/projects/pi-host/AGENTS.md`.
+- Registry (ledger `app.projects`, as of 2026-10-31): fourier → conv 6884, cwd
+  `/opt/projects/fourier`; pi-host → conv 6954, cwd `/opt/projects/pi-host`;
+  pr-review-workflow → conv 7139, room `!lCBs2Rcgt_wsaTMmqI_wNmeLb1_GGKSDcrcFQGGvZN8`,
+  cwd `/opt/pi-host/projects/pr-review-workflow` (nested INSIDE the pi-host
+  repo — see open-items; zero commits yet).
 - Anchors: all 6 running (4 subagent + 6883/6953 project) after today's fix
   (§decisions d20). Model: `deepseek-v4.1-flash` @ `https://ollama.com/v1`;
   subagent default `glm-5.3-flash`, max turns 40 (env-overridable).
@@ -149,10 +151,13 @@ same ledger. Containers: `pi-host` (the daemon, rw) + `pi-wall` (all mounts ro).
 - **`/embed` fix**: host Ollama needs `OLLAMA_HOST=0.0.0.0` + two scoped ufw
   allows (bridge→host is dropped; see ollama-loopback-investigation.md).
 - **Backup consistency** for the ledger (quiesce or `sqlite3 .backup`).
-- **pr-review-workflow stray**: pi-host's project agent scaffolded
-  `projects/pr-review-workflow/` (fresh git init, one AGENTS.md, zero commits)
-  inside its own cwd — pollution in the repo tree; decide: delete, relocate to
-  `/opt/projects/`, or teach agents to scaffold relative to `/opt/projects`.
+- **pr-review-workflow's cwd is nested inside the pi-host repo**
+  (`/opt/pi-host/projects/…`): it works, but it mixes a project tree into the
+  daemon's own repo (blocks `git add -A` with its zero-commit git init; its
+  branch has nothing to merge). Decide: relocate to `/opt/projects/`
+  (`mv` + `/project bind pr-review-workflow /opt/projects/pr-review-workflow`
+  from its room, upsert) or teach agents to scaffold relative to
+  `/opt/projects`.
 - **E2EE** (deferred) and **sentinel/watchman git-poll** (deferred).
 
 ## Gotchas (the ones that cost real time)
