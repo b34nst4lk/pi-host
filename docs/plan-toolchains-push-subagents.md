@@ -109,14 +109,26 @@ WS2→WS3→WS5 is the push chain. WS6 runs throughout and closes.
 
 ---
 
-## WS1 — toolchain mount + gleam in the container (Q7=b, Q2=a)
+## WS1 — toolchain mount + gleam in the container (Q7=b, Q2=a) — **LANDED 2026-11-02**
 
 Goal: a persistent, agent-owned toolchain directory bind-mounted into the
 container at `/opt/toolchains` (on PATH); gleam installed there; `gleam test`
 folded into `npm run gates`.
 
-Mostly **ops** (compose, runner, package.json), not TDD-shaped. One small
-pure-ish decision and an integration verification.
+**Done:** host dir `~/hermes-users/jacksim/workspace/pi-host-toolchains/bin`
+seeded with the static gleam binary (uid 1000, 1.19.2); compose mounts it
+`:ro` at `/opt/toolchains`; runner exports `PATH=/opt/toolchains/bin:$PATH`;
+`npm run gates` now runs `wall:test` = `cd wall && rm -rf build && gleam test`.
+Verified: host gates green (194 vitest + 77 gleam), in-container gates green
+(194 + 77), `wall/build.sh` produces assets in-container.
+
+**Lesson (worth a plan-and-lessons entry):** `wall/build/` carries absolute
+symlinks (lustre `priv/`), and the repo tree is bind-mounted rw, so host and
+container share one `wall/build/`. Running gates on both collides on the
+symlink (EEXIST). `wall:test` now `rm -rf build` first — gleam recompiles in
+~0.2s from its global cache, no network. Cost is trivial; correctness is not.
+
+Mostly **ops** (compose, runner, package.json), not TDD-shaped.
 
 ### Ops steps
 1. Host: `mkdir -p ~/hermes-users/jacksim/workspace/pi-host-toolchains/bin`
