@@ -37,7 +37,7 @@ services:
       MATRIX_ALLOWED_USERS: "@jacksim:jacks.im"
       PI_HOST_DB: /opt/pi-host/storage/session.sqlite
       PI_HOST_SANDBOX: /opt/pi-host/workspace
-      OLLAMA_MODEL: deepseek-v4.1-flash
+      OLLAMA_MODEL: ollama/glm-5.2:cloud
       OLLAMA_BASE_URL: https://ollama.com/v1
       # Embeddings stay on the local Ollama, reached through the host gateway.
       # KNOWN GAP: host Ollama binds 127.0.0.1:11434 only, so /embed answers
