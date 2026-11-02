@@ -69,13 +69,14 @@ import { defineDoc, Harness, InboxDoc, type ConversationId, type Submission } fr
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { createAgentEnv } from "./env.ts";
 import { ACK_REACTION, roomShort, submitMatrixCommand, type EventId } from "./core/steer.ts";
-import { createRoomRouter } from "./rooms.ts";
+import { createRoomRouter, roomForConversation } from "./rooms.ts";
 import {
 	createProjects,
 	EMPTY_PROJECTS,
 	ProjectsDoc,
 	type ProjectOutcome,
 	type ProjectsApi,
+	type ProjectsState,
 } from "./projects.ts";
 import { createMatrixClient } from "./surfaces/matrix-client.ts";
 import { createOllamaApi } from "./ollama_api.ts";
@@ -121,16 +122,37 @@ const lastInbound = new Map<string, EventId>();
 /** The event a reply in `room` should quote, or `null` before any. */
 const replyTargetFor = (room: string): EventId | null => lastInbound.get(room) ?? null;
 
+/**
+ * Where a subagent's report is posted: the room bound to the conversation that
+ * SPAWNED it (a project's agent spawns from its own conversation), the main room
+ * otherwise. A subagent of the main agent reports into the main room.
+ *
+ * The registry is read at SEND time — a spawn is a long-lived task and a bind or
+ * rebind can happen while it runs — so the reader is injected once the harness
+ * is open, below.
+ */
+let projectRegistry: (() => Promise<ProjectsState>) | undefined;
+async function reportRoom(conversation: ConversationId): Promise<string> {
+	if (projectRegistry === undefined) return env.room;
+	try {
+		return roomForConversation(await projectRegistry(), conversation) ?? env.room;
+	} catch (error) {
+		// A registry read that fails must not lose the report: the main room still hears it.
+		journal(`subagent report room lookup failed: ${reason(error)}`);
+		return env.room;
+	}
+}
+
 /** The subagent runtime: named persistent children in their own worktrees. */
 const subagents = createSubagents({
 	provider: "ollama-cloud",
 	model: env.subagentModel,
 	maxTurns: env.subagentMaxTurns,
 	git: (args, cwd, execEnv, contextArg) => envGit(args, cwd, execEnv, contextArg),
-	roomPost: async (text: string) => {
+	roomPost: async (text: string, conversation: ConversationId) => {
 		try {
-			// Reports thread in the MAIN room: a subagent is the main agent's child.
-			return await client.sendText(env.room, text, replyTargetFor(env.room));
+			const room = await reportRoom(conversation);
+			return await client.sendText(room, text, replyTargetFor(room));
 		} catch (error) {
 			// subagents.ts reports the failure to the reporter task too; the journal is
 			// what survives when nobody is watching the room.
@@ -141,16 +163,17 @@ const subagents = createSubagents({
 	log: (message: string) => log(`[subagent] ${message}`),
 });
 /**
- * The project system: rooms bound to persistent child conversations. Created
- * before the registry because a project agent must not select the subagent tool
- * (`hideExtensions`) — a project is a space, not a spawner.
+ * The project system: rooms bound to persistent child conversations. A project
+ * agent is a normal steer agent in its own directory, so it keeps the subagent
+ * tool (`hideExtensions: []`): it fans work out into worktrees of ITS repository,
+ * and those leaves report into the project's room (see `reportRoom`).
  */
 const projects = createProjects({
 	provider: "ollama-cloud",
 	model: env.ollamaModel,
 	projectsDir: env.projectsDir,
 	git: (args, cwd, execEnv, contextArg) => envGit(args, cwd, execEnv, contextArg),
-	hideExtensions: [subagents.tools],
+	hideExtensions: [],
 	env: (cwd) => createAgentEnv({ cwd }, env.sandbox),
 	log: (message: string) => log(`[project] ${message}`),
 });
@@ -291,6 +314,8 @@ const projectApi: ProjectsApi = {
 	commit: (body) => root.commit(body, context),
 	projects: async () => (await harness.snapshot(ProjectsDoc, root.id, context)) ?? EMPTY_PROJECTS,
 };
+// From here on a subagent report finds its room: the registry decides, per spawner.
+projectRegistry = () => projectApi.projects();
 
 /** The reply line for one bind. A bound conversation starts pumping right here. */
 async function afterBind(outcome: ProjectOutcome): Promise<string> {

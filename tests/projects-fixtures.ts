@@ -16,6 +16,7 @@ import { createAgentEnv } from "../src/env.ts";
 import { type TextEvent } from "../src/core/steer.ts";
 import { EMPTY_PROJECTS, type ProjectsApi, ProjectsDoc, createProjects } from "../src/projects.ts";
 import { type RoomRouterDeps, createRoomRouter, routeRoom } from "../src/rooms.ts";
+import { createSubagents } from "../src/subagents.ts";
 import { type GitRunner } from "../src/git.ts";
 
 
@@ -30,7 +31,7 @@ export const context = BACKGROUND_CONTEXT;
 
 export type Setup = Awaited<ReturnType<typeof setup>>;
 
-export async function setup(options?: { git?: GitRunner }) {
+export async function setup(options?: { git?: GitRunner; subagents?: boolean }) {
 	// A real directory: the instructions are a real file, and "live" only means
 	// something if something can edit it between two messages.
 	const sandbox = mkdtempSync(join(tmpdir(), "pi-projects-"));
@@ -43,6 +44,8 @@ export async function setup(options?: { git?: GitRunner }) {
 		options?.git ??
 		(async (args, cwd) => {
 			gitCalls.push([cwd ?? "?", ...args]);
+			// a spawn asks for the repository root first; everything else just succeeds
+			if (args[0] === "rev-parse") return { ok: true, stdout: "/repo\n", stderr: "" };
 			return { ok: true, stdout: "", stderr: "" };
 		});
 	const projects = createProjects({
@@ -50,11 +53,32 @@ export async function setup(options?: { git?: GitRunner }) {
 		model: "faux-1",
 		projectsDir,
 		git,
+		// The daemon's posture: a project agent keeps every installed extension, the
+		// subagent tool included. It is a steer agent in its own repository.
 		hideExtensions: [],
 		env: (cwd) => createAgentEnv({ cwd }, sandbox),
 	});
+	// A report records WHICH conversation spawned the subagent (`roomPost`'s second
+	// argument) plus the text: that pair is what the daemon turns into a room.
+	const roomPosts: Array<{ text: string; conversation: ConversationId }> = [];
+	const subagents =
+		options?.subagents === true
+			? createSubagents({
+					provider: "faux",
+					model: "faux-1",
+					maxTurns: 3,
+					git,
+					roomPost: async (text, conversation) => {
+						roomPosts.push({ text, conversation });
+					},
+				})
+			: undefined;
 	const registry = createRegistry();
 	registry.install(projects.extension);
+	if (subagents !== undefined) {
+		registry.install(subagents.tools);
+		registry.install(subagents.limits);
+	}
 	const harness = await Harness.open(
 		new MemoryStorage(),
 		{
@@ -74,7 +98,7 @@ export async function setup(options?: { git?: GitRunner }) {
 		commit: (body) => root.commit(body, context),
 		projects: async () => (await harness.snapshot(ProjectsDoc, root.id, context)) ?? EMPTY_PROJECTS,
 	};
-	return { sandbox, projectsDir, faux, harness, root, gitCalls, projects, api };
+	return { sandbox, projectsDir, faux, harness, root, gitCalls, projects, api, roomPosts, subagents };
 }
 
 /**

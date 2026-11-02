@@ -40,8 +40,12 @@ type ReporterRuntime = TaskRuntime<ReporterInput, ReporterState, ReporterOutcome
 export type ReporterHost = {
 	/** Runs git; `envGit` in production. */
 	readonly git: GitRunner;
-	/** Posts to the room, threaded onto the newest inbound message, read at send time. */
-	readonly roomPost: (text: string) => Promise<unknown>;
+	/**
+	 * Posts to the room, threaded onto the newest inbound message, read at send time.
+	 * `conversation` is the one that SPAWNED the subagent: a project's agent spawns
+	 * from its own conversation, and its report belongs in the project's room.
+	 */
+	readonly roomPost: (text: string, conversation: ConversationId) => Promise<unknown>;
 	/** One-line logger. */
 	readonly log?: (message: string) => void;
 };
@@ -58,7 +62,7 @@ export function defineReporterTask(host: ReporterHost) {
 			context,
 		);
 		try {
-			await host.roomPost(body);
+			await host.roomPost(body, runtime.conversationId);
 		} catch (error) {
 			runtime.report(error);
 		}

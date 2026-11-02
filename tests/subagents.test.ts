@@ -13,7 +13,7 @@ import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { createModels } from "@earendil-works/pi-ai/models";
 import type { TranscriptContext } from "@earendil-works/pi-ai";
 import { fauxAssistantMessage, fauxProvider, fauxToolCall } from "@earendil-works/pi-ai/providers/faux";
-import { createRegistry, Harness } from "@earendil-works/pi-durable";
+import { createRegistry, Harness, type ConversationId } from "@earendil-works/pi-durable";
 import { MemoryStorage } from "@earendil-works/pi-durable/storage/memory";
 import { describe, expect, it } from "vitest";
 import type { GitRun, GitRunner } from "../src/git.ts";
@@ -38,6 +38,8 @@ async function setup(options?: { storage?: MemoryStorage; git?: GitRunner; token
 	const models = createModels();
 	models.setProvider(faux.provider);
 	const roomPosts: string[] = [];
+	// The conversation that SPAWNED each subagent: the daemon turns it into a room.
+	const posters: Array<ConversationId> = [];
 	const gitCalls: string[][] = [];
 	const git: GitRunner =
 		options?.git ??
@@ -52,8 +54,9 @@ async function setup(options?: { storage?: MemoryStorage; git?: GitRunner; token
 		model: "faux-1",
 		maxTurns: 3,
 		git,
-		roomPost: async (text) => {
+		roomPost: async (text, conversation) => {
 			roomPosts.push(text);
+			posters.push(conversation);
 		},
 	});
 	const storage = options?.storage ?? new MemoryStorage();
@@ -70,7 +73,7 @@ async function setup(options?: { storage?: MemoryStorage; git?: GitRunner; token
 		agent: { model: { provider: "faux", modelId: "faux-1" }, extensions: [subagents.tools, subagents.limits] },
 	});
 	harness.resume();
-	return { faux, harness, root, storage, roomPosts, gitCalls, subagents };
+	return { faux, harness, root, storage, roomPosts, posters, gitCalls, subagents };
 }
 
 function registryFor(subagents: ReturnType<typeof createSubagents>) {
@@ -267,6 +270,8 @@ describe("reports", () => {
 
 		await waitUntil(() => t.roomPosts.length === 1);
 		expect(t.roomPosts[0]).toBe("[subagent research] There are four files.");
+		// the spawner travels with the report: the daemon picks the room from it
+		expect(t.posters).toEqual([t.root.id]);
 
 		// the same answer arrives as ordinary input in the main conversation
 		await waitUntil(async () => (await transcriptText(t.harness, t.root.id)).includes("[subagent research] There are four files."));

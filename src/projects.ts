@@ -202,7 +202,12 @@ export type ProjectsHost = {
 	readonly projectsDir: string;
 	/** Runs git; `envGit` in production. */
 	readonly git: GitRunner;
-	/** Extensions a project agent must never select (the subagent tool: a project is a space, not a spawner). */
+	/**
+	 * Extensions a project agent must never select. Empty in the daemon: a project
+	 * agent is a normal steer agent in its own repository, so it keeps the subagent
+	 * tool and spawns leaves into ITS worktrees (the child of a child is still
+	 * forbidden — `subagents.ts` strips the tool from every subagent).
+	 */
 	readonly hideExtensions: readonly Extension[];
 	/** The execution environment for one directory. */
 	readonly env: (cwd: string) => ExecutionEnv;

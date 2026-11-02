@@ -83,7 +83,10 @@ describe("route table", () => {
 	it("finds the room of a conversation, and nothing for a subagent child", () => {
 		const state = bound(EMPTY_PROJECTS, "app", 7, "!b:jacks.im");
 		expect(roomForConversation(state, 7 as ConversationId)).toBe("!b:jacks.im");
+		// `null` is not an error: the main conversation and every subagent child report
+		// to the fallback room, which is why the lookup is `?? fallback` in the daemon.
 		expect(roomForConversation(state, 9 as ConversationId)).toBeNull();
+		expect(roomForConversation(state, 1 as ConversationId)).toBeNull();
 	});
 });
 
