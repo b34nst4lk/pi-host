@@ -7,6 +7,10 @@
 // command arrived in — a chat surface must not be able to bind a room the sender
 // is not standing in.
 //
+// The two durable documents a project lives in are in `project-registry.ts` (the
+// docs are what other modules read); this file is the behaviour: binding,
+// scaffolding, the prompt section, and the `/project` replies.
+//
 // Shape of a bind (ONE commit, the same machinery as a subagent):
 //   anchor task (background: it holds, so `/stop` on the main conversation never
 //   reaches into a project) → child conversation owned by it → agent configured
@@ -21,7 +25,6 @@
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import {
 	configure,
-	defineDoc,
 	section,
 	type ConversationId,
 	type Extension,
@@ -33,6 +36,7 @@ import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import { isAbsolute, join, resolve } from "node:path";
 import { defineAnchorTask } from "./anchor.ts";
 import type { GitRunner } from "./git.ts";
+import { EMPTY_PROJECTS, ProjectDoc, ProjectsDoc, type ProjectRecord, type ProjectsState } from "./project-registry.ts";
 
 const context = BACKGROUND_CONTEXT;
 
@@ -47,60 +51,6 @@ export function parseProjectName(raw: string): string | null {
 	const name = raw.trim();
 	return PROJECT_NAME_PATTERN.test(name) ? name : null;
 }
-
-// --- durable state ---------------------------------------------------------
-
-/** One project, as the registry in the main conversation records it. */
-export type ProjectRecord = {
-	/** The Matrix room this project answers in (full id: it is a routing key). */
-	room: string;
-	/** The child conversation bound to that room. */
-	conversation: ConversationId;
-	/** Where the agent's tools run. */
-	cwd: string;
-	/** The file re-read on every request: `<cwd>/AGENTS.md` unless it was moved. */
-	instructions_path: string;
-	/** First line of `AGENTS.md` when the project was bound (and when last listed). */
-	summary: string;
-	/** ISO timestamp of the bind. */
-	created: string;
-};
-
-/** The project registry. One per daemon, kept in the main conversation. */
-export type ProjectsState = { projects: Record<string, ProjectRecord> };
-
-/** A conversation that never had a project bound has an empty registry. */
-export const EMPTY_PROJECTS: ProjectsState = { projects: {} };
-
-export const ProjectsDoc = defineDoc<ProjectsState>({
-	kind: "app.projects",
-	version: 1,
-	scope: "conversation",
-	history: "latest",
-	fork: "initial",
-	initial: () => ({ projects: {} }),
-});
-
-/**
- * The marker a project conversation carries about itself. It exists because the
- * prompt section renders INSIDE the child conversation and can only read that
- * conversation's documents: without it, a project agent could not say which
- * project it is or where its instructions live.
- */
-export type ProjectMarker = {
-	name: string;
-	cwd: string;
-	instructions_path: string;
-};
-
-export const ProjectDoc = defineDoc<ProjectMarker>({
-	kind: "app.project",
-	version: 1,
-	scope: "conversation",
-	history: "latest",
-	fork: "initial",
-	initial: () => ({ name: "", cwd: "", instructions_path: "" }),
-});
 
 // --- the anchor ------------------------------------------------------------
 
@@ -155,7 +105,8 @@ export function projectHint(): string {
 		"project commands (type them in the room you want to stand in):",
 		"  /project new <name> [path] — scaffold a directory (mkdir + git init + starter AGENTS.md) and bind THIS room to it",
 		"  /project bind <name> <path> — bind THIS room to an existing directory",
-		"  /project list — every project, its room and its working directory",
+		"  /project push <name> on|off — may that project's agent push to its repository? (off by default; works in any room)",
+		"  /project list — every project, its room, its working directory and its push flag",
 		"plain text in a bound room goes to that project's conversation; /steer, /note, /stop and /status work there too.",
 	].join("\n");
 }
@@ -164,7 +115,7 @@ export function projectHint(): string {
 export function describeProject(name: string, record: ProjectRecord, liveSummary: string | null): string {
 	const summary = liveSummary ?? record.summary;
 	return [
-		`${name} — room ${record.room} — conversation ${record.conversation} — ${record.cwd}`,
+		`${name} — room ${record.room} — conversation ${record.conversation} — ${record.cwd}${record.push === true ? " — push" : ""}`,
 		summary.length === 0 ? "" : `    ${summary}`,
 	]
 		.filter(Boolean)
@@ -211,6 +162,12 @@ export type ProjectsHost = {
 	readonly hideExtensions: readonly Extension[];
 	/** The execution environment for one directory. */
 	readonly env: (cwd: string) => ExecutionEnv;
+	/**
+	 * Whether the host has a `gh` config dir to grant at all (`GH_CONFIG_DIR`).
+	 * Without one, `/project push <name> on` is refused instead of granted and
+	 * silently doing nothing at the first `git push`.
+	 */
+	readonly canPush: boolean;
 	/** One-line logger. */
 	readonly log?: (message: string) => void;
 };
@@ -327,8 +284,9 @@ export function createProjects(host: ProjectsHost) {
 				};
 				if (existing !== undefined) {
 					// REBIND: reconfigure the existing child conversation + its marker, keep
-					// the conversation id (and so its history). The registry row is
-					// updated in place — pointers only, never a copy of instructions.
+					// the conversation id (and so its history) and the push permission. The
+					// registry row is updated in place — pointers only, never a copy of
+					// instructions.
 					await configure(tx, existing.conversation, change);
 					const marker = await tx.doc(ProjectDoc, existing.conversation);
 					marker.cwd = dir;
@@ -339,6 +297,7 @@ export function createProjects(host: ProjectsHost) {
 						cwd: dir,
 						instructions_path: instructionsPath,
 						summary,
+						push: existing.push === true,
 						created: existing.created,
 					};
 					return existing.conversation;
@@ -361,6 +320,8 @@ export function createProjects(host: ProjectsHost) {
 					cwd: dir,
 					instructions_path: instructionsPath,
 					summary,
+					// A new project may never push: permission is granted, never inherited.
+					push: false,
 					created: createdAt,
 				};
 				return child.id;
@@ -430,6 +391,41 @@ export function createProjects(host: ProjectsHost) {
 		return attach(trimmed, dir, room, false, api);
 	}
 
+	/**
+	 * `/project push <name> on|off`: ONE commit flips the permission on the registry
+	 * row AND on the project's own marker — the env factory reads the marker per
+	 * tool exec, the room is answered from the registry. The token is never
+	 * written here; only the boolean is.
+	 */
+	async function push(name: string, enabled: boolean, api: ProjectsApi): Promise<string> {
+		const trimmed = parseProjectName(name);
+		if (trimmed === null) return `❌ invalid project name '${name}': lower-case letters, digits, dashes (max 40)`;
+		if (enabled && !host.canPush) {
+			return (
+				`❌ cannot turn push on: this host has no gh config dir (GH_CONFIG_DIR), ` +
+				`so project ${trimmed} would still find no credential`
+			);
+		}
+		try {
+			const conversation = await api.commit(async (tx) => {
+				const doc = await tx.doc(ProjectsDoc, api.main);
+				const record = doc.projects[trimmed];
+				if (record === undefined) throw new Error(`no such project: ${trimmed} — /project list them`);
+				record.push = enabled;
+				const marker = await tx.doc(ProjectDoc, record.conversation);
+				marker.push = enabled;
+				return record.conversation;
+			});
+			log(`project ${trimmed}: push ${enabled ? "on" : "off"} (conversation ${conversation})`);
+			return (
+				`project ${trimmed}: push ${enabled ? "on" : "off"}` +
+				(enabled ? " — takes effect on its next tool call; branch protection still wants a PR" : "")
+			);
+		} catch (error) {
+			return `❌ ${reasonOf(error)}`;
+		}
+	}
+
 	/** `/project list`: the registry, with each project's summary re-read live. */
 	async function list(api: ProjectsApi): Promise<string> {
 		const state = await registry(api);
@@ -444,6 +440,7 @@ export function createProjects(host: ProjectsHost) {
 	return {
 		create,
 		bind,
+		push,
 		list,
 		/** The `project` prompt section: the living instructions. */
 		section: projectSection,

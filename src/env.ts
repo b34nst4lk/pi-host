@@ -9,6 +9,10 @@
 // it — the model did ask for a timeout, but the harness only passes one when the
 // model asked, and the model often does not. So every command gets a default, and
 // an explicit `options.timeout` always wins.
+//
+// The one permission the env carries is push (`pushShellEnv`): a project whose
+// registry flag is on gets `GH_CONFIG_DIR`, everything else inherits the plain
+// process env and finds no credential.
 import { type Context } from "@earendil-works/chord";
 import type { EnvTarget } from "@earendil-works/pi-durable";
 import {
@@ -79,14 +83,44 @@ export function resolveAgentSandbox(target: Pick<EnvTarget, "cwd">, fallback: st
 	return target.cwd ?? fallback;
 }
 
+/**
+ * Permission to push, as the tool env sees it: a `gh` config dir whose credential
+ * helper carries the host's token. `undefined` means "cannot push", and it is the
+ * only value a conversation without the project's push flag ever gets — the token
+ * stays central and never enters a project directory or the registry.
+ */
+export type GitPush = { readonly configDir: string };
+
+/**
+ * The shell env for one tool exec. Granted: `GH_CONFIG_DIR` names the host's authed
+ * config dir and gh/git can authenticate. Not granted: `GH_CONFIG_DIR=""`, an
+ * explicit empty value rather than an absent one — the SDK merges `process.env`
+ * UNDER this object, so only an explicit value can revoke an inherited one, and
+ * `gh` with an empty config dir reports "not logged in" (measured, not assumed).
+ * Pure, so the permission seam is a fixture instead of a probe.
+ */
+export function pushShellEnv(gitPush: GitPush | undefined, base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+	return { ...base, GH_CONFIG_DIR: gitPush?.configDir ?? "" };
+}
+
+/**
+ * The permission rule, in one place: a project marker that grants push plus a
+ * host config dir to point at. Anything else — no marker, `push: false`, a host
+ * with no `GH_CONFIG_DIR` — yields `undefined`, i.e. no credential.
+ */
+export function gitPushFor(marker: { readonly push?: boolean } | undefined, configDir: string): GitPush | undefined {
+	return marker?.push === true && configDir.length > 0 ? { configDir } : undefined;
+}
+
 /** Build the execution env for one env target (HarnessOptions.env calls this per use). */
 export function createAgentEnv(
 	target: Pick<EnvTarget, "cwd">,
 	sandbox: string,
-	options: { readonly defaultTimeoutMs?: number } = {},
+	options: { readonly defaultTimeoutMs?: number; readonly gitPush?: GitPush } = {},
 ): ExecutionEnv {
 	return new TimeoutEnv({
 		cwd: resolveAgentSandbox(target, sandbox),
 		defaultTimeoutMs: options.defaultTimeoutMs ?? bashDefaultTimeoutMs(),
+		shellEnv: pushShellEnv(options.gitPush),
 	});
 }

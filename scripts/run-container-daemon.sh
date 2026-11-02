@@ -88,6 +88,12 @@ export PATH="/opt/toolchains/bin:${PATH}"
 # `gh auth login --with-token` (never argv, never the daemon env, never a log),
 # then is unset before exec; `gh auth setup-git` makes `git push` over HTTPS use it.
 # A failed auth is a WARN, not fatal: the daemon still comes up without push.
+#
+# The dir reaches the daemon as PI_HOST_GH_CONFIG_DIR, NOT as GH_CONFIG_DIR: a
+# tool exec inherits the daemon's process env, so a GH_CONFIG_DIR set here would
+# hand every conversation (the main agent, subagents, projects that never opted
+# in) the credential and defeat the per-project push flag. The daemon injects
+# GH_CONFIG_DIR itself, per conversation, only for a project that opted in.
 export GH_CONFIG_DIR="$APP_DIR/.gh"
 mkdir -p "$GH_CONFIG_DIR"
 GITHUB_TOKEN="$(cat "$SECRETS_PERSISTENT_DIR/github_token")"
@@ -97,6 +103,8 @@ else
 	gh auth setup-git >/dev/null 2>&1
 fi
 unset GITHUB_TOKEN
+export PI_HOST_GH_CONFIG_DIR="$GH_CONFIG_DIR"
+unset GH_CONFIG_DIR
 
 # Same storage file as the host runner: exactly one process may own it, so the
 # host daemon must be stopped before this container starts (the cutover step).

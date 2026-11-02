@@ -4,7 +4,8 @@
 import { type ConversationId } from "@earendil-works/pi-durable";
 import { describe, expect, it } from "vitest";
 import { parseMatrixCommand, roomShort } from "../src/core/steer.ts";
-import { EMPTY_PROJECTS, parseProjectName, projectHint, starterAgentsMd, summaryOf } from "../src/projects.ts";
+import { parseProjectName, projectHint, starterAgentsMd, summaryOf } from "../src/projects.ts";
+import { EMPTY_PROJECTS } from "../src/project-registry.ts";
 import { isProjectCommand, roomForConversation, routeRoom } from "../src/rooms.ts";
 import { bound, event, routerWith } from "./projects-fixtures.ts";
 
@@ -21,6 +22,15 @@ describe("/project commands", () => {
 		expect(parseMatrixCommand("/project new app /srv/app")).toEqual({ action: "project-new", name: "app", path: "/srv/app" });
 		expect(parseMatrixCommand("/project bind app /srv/my app")).toEqual({ action: "project-bind", name: "app", path: "/srv/my app" });
 		expect(parseMatrixCommand("/project list")).toEqual({ action: "project-list" });
+	});
+
+	it("parses the push toggle, and refuses anything that is not on/off", () => {
+		expect(parseMatrixCommand("/project push app on")).toEqual({ action: "project-push", name: "app", enabled: true });
+		expect(parseMatrixCommand("/project push app off")).toEqual({ action: "project-push", name: "app", enabled: false });
+		expect(parseMatrixCommand("/project push  app   ON")).toEqual({ action: "project-push", name: "app", enabled: true });
+		expect(parseMatrixCommand("/project push")).toEqual({ action: "project-invalid", text: "push (no name)" });
+		expect(parseMatrixCommand("/project push app")).toEqual({ action: "project-invalid", text: "push app" });
+		expect(parseMatrixCommand("/project push app maybe")).toEqual({ action: "project-invalid", text: "push app maybe" });
 	});
 
 	it("answers a typo with the hint instead of steering a model with it", () => {
@@ -61,6 +71,7 @@ describe("/project commands", () => {
 		const hint = projectHint();
 		expect(hint).toContain("/project new <name> [path]");
 		expect(hint).toContain("/project bind <name> <path>");
+		expect(hint).toContain("/project push <name> on|off");
 		expect(hint).toContain("/project list");
 	});
 });
@@ -118,6 +129,16 @@ describe("multi-room sync", () => {
 		await t.router.handleEvent(event(rooms.other, "/project bind app /srv/app"));
 		expect(t.sent).toEqual([{ room: rooms.other, text: `bind app /srv/app in ${rooms.other}` }]);
 		expect(t.reactions[0]?.room).toBe(rooms.other);
+	});
+
+	it("answers /project push in whatever room it was typed, naming the project", async () => {
+		// The toggle changes the registry, not a binding, so it works from any room —
+		// including one bound to a DIFFERENT project (nothing is steered).
+		const state = bound(EMPTY_PROJECTS, "app", 7, rooms.project);
+		const t = routerWith(state, rooms);
+		await t.router.handleEvent(event(rooms.other, "/project push app on"));
+		expect(t.sent).toEqual([{ room: rooms.other, text: "push app on" }]);
+		expect(t.submitCalls).toEqual([]);
 	});
 
 	it("answers a bad project command with the hint, in the same room", async () => {

@@ -20,7 +20,8 @@
 // a function of injected calls, so the multi-room tests run against fakes.
 import type { ConversationId } from "@earendil-works/pi-durable";
 import { parseMatrixCommand, pickNewEvents, roomShort, type EventId, type MatrixCommand, type TextEvent } from "./core/steer.ts";
-import { projectHint, type ProjectsState } from "./projects.ts";
+import { projectHint } from "./projects.ts";
+import { type ProjectsState } from "./project-registry.ts";
 
 /** Ollama-answered commands: one upstream call each, never in the sync loop's path. */
 const OLLAMA_ACTIONS = new Set(["usage", "usage-invalid", "balance", "models", "embed"]);
@@ -83,10 +84,11 @@ export type RoomRouterDeps = {
 	readonly status: (conversation: ConversationId) => Promise<string>;
 	/** Answer an Ollama query command; never awaited, never throws. */
 	readonly ollama: (command: MatrixCommand, replyTo: EventId, room: string) => void;
-	/** The `/project` handlers: scaffold, bind, list. */
+	/** The `/project` handlers: scaffold, bind, push, list. */
 	readonly project: {
 		create: (name: string, path: string, room: string) => Promise<string>;
 		bind: (name: string, path: string, room: string) => Promise<string>;
+		push: (name: string, enabled: boolean) => Promise<string>;
 		list: () => Promise<string>;
 	};
 	/** Ingested event ids: Matrix ids are `$`-global, so one set spans every room. */
@@ -162,6 +164,11 @@ export function createRoomRouter(deps: RoomRouterDeps) {
 				return;
 			case "project-bind":
 				await replyIn(event.room, await deps.project.bind(command.name, command.path, event.room), event.id);
+				return;
+			case "project-push":
+				// Answered where it was typed, like every project command: the toggle names
+				// its project, so the room it comes from is irrelevant.
+				await replyIn(event.room, await deps.project.push(command.name, command.enabled), event.id);
 				return;
 			case "project-list":
 				await replyIn(event.room, await deps.project.list(), event.id);

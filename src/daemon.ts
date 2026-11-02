@@ -64,20 +64,22 @@
 //   PI_HOST_DB               default ./storage/session.sqlite (renamed from
 //                            the spike's STEER_DB; durable ledger of the host)
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import type { Context } from "@earendil-works/chord";
 import { createModels } from "@earendil-works/pi-ai/models";
-import { defineDoc, Harness, InboxDoc, type ConversationId, type Submission } from "@earendil-works/pi-durable";
+import {
+	defineDoc,
+	Harness,
+	InboxDoc,
+	type ConversationId,
+	type EnvTarget,
+	type Submission,
+} from "@earendil-works/pi-durable";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
-import { createAgentEnv } from "./env.ts";
+import { createAgentEnv, gitPushFor } from "./env.ts";
 import { ACK_REACTION, roomShort, submitMatrixCommand, type EventId } from "./core/steer.ts";
 import { createRoomRouter, roomForConversation } from "./rooms.ts";
-import {
-	createProjects,
-	EMPTY_PROJECTS,
-	ProjectsDoc,
-	type ProjectOutcome,
-	type ProjectsApi,
-	type ProjectsState,
-} from "./projects.ts";
+import { createProjects, type ProjectOutcome, type ProjectsApi } from "./projects.ts";
+import { EMPTY_PROJECTS, ProjectDoc, ProjectsDoc, type ProjectsState } from "./project-registry.ts";
 import { createMatrixClient } from "./surfaces/matrix-client.ts";
 import { createOllamaApi } from "./ollama_api.ts";
 import { envGit } from "./git.ts";
@@ -174,6 +176,7 @@ const projects = createProjects({
 	projectsDir: env.projectsDir,
 	git: (args, cwd, execEnv, contextArg) => envGit(args, cwd, execEnv, contextArg),
 	hideExtensions: [],
+	canPush: env.ghConfigDir.length > 0,
 	env: (cwd) => createAgentEnv({ cwd }, env.sandbox),
 	log: (message: string) => log(`[project] ${message}`),
 });
@@ -191,9 +194,20 @@ const SteerCursor = defineDoc<{ ids: Array<string | number> }>({
 const CURSOR_CAP = 200;
 
 const db = await openNodeSqliteStorage(env.db);
+/**
+ * The tools' environment. Read per use, and the ONE place the push permission is
+ * applied: a conversation whose `app.project` marker says `push: true` gets the
+ * host's `gh` config dir, everything else (the main agent, subagents, projects
+ * that never opted in) finds no credential at all.
+ */
+const agentEnv = async (target: EnvTarget, envContext: Context) => {
+	if (env.ghConfigDir.length === 0) return createAgentEnv(target, env.sandbox);
+	const marker = await target.read.snapshot(ProjectDoc, target.conversationId, envContext);
+	return createAgentEnv(target, env.sandbox, { gitPush: gitPushFor(marker, env.ghConfigDir) });
+};
 const harness = await Harness.open(
 	db,
-	{ models, registry, env: (target) => createAgentEnv(target, env.sandbox), settings: { followUpMode: "all", steeringMode: "all" } },
+	{ models, registry, env: agentEnv, settings: { followUpMode: "all", steeringMode: "all" } },
 	context,
 );
 const root = await harness.root(context, {
@@ -360,6 +374,7 @@ const router = createRoomRouter({
 	project: {
 		create: async (name, path, room) => afterBind(await projects.create(name, path, room, projectApi)),
 		bind: async (name, path, room) => afterBind(await projects.bind(name, path, room, projectApi)),
+		push: (name, enabled) => projects.push(name, enabled, projectApi),
 		list: () => projects.list(projectApi),
 	},
 	seen: seenEvents,
