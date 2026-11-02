@@ -63,6 +63,13 @@ OLLAMA_API_KEY="$(cat "$SECRETS_DIR/ollama_key")"
 export MATRIX_ACCESS_TOKEN OLLAMA_API_KEY
 trap 'unset MATRIX_ACCESS_TOKEN OLLAMA_API_KEY' EXIT
 
+# The persistent toolchain dir (host: ~/…/pi-host-toolchains → /opt/toolchains,
+# :ro from compose): gleam now, gh and others later. Host-seeded (uid 1000)
+# for now; agent self-service installs are a later step. Putting it on PATH
+# here means the daemon's tool-exec env (bash) finds gleam for `npm run gates`
+# and `wall/build.sh`.
+export PATH="/opt/toolchains/bin:${PATH}"
+
 # Same storage file as the host runner: exactly one process may own it, so the
 # host daemon must be stopped before this container starts (the cutover step).
 exec ./node_modules/.bin/tsx src/daemon.ts

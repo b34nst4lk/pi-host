@@ -54,6 +54,9 @@ services:
       # inside is /opt/projects/<name>; rw — the agent builds and creates
       # worktrees there; allowlist-scoped by design).
       - /home/jacksim/hermes-users/jacksim/workspace/projects:/opt/projects
+      # The persistent toolchain dir: gleam now, gh and others later. Host-
+      # seeded (uid 1000); :ro until agent self-service installs (a later step).
+      - /home/jacksim/hermes-users/jacksim/workspace/pi-host-toolchains:/opt/toolchains:ro
       # Host tmpfs, read-only: nothing secret ever lands on disk.
       - /dev/shm/pi-host:/run/secrets:ro
     extra_hosts:
