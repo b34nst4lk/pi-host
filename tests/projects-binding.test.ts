@@ -55,7 +55,7 @@ describe("bind", () => {
 		expect((await t.api.projects()).projects.docs!.summary).toBe("Docs project");
 	});
 
-	it("refuses a room that already steers a project, and a name that is taken", async () => {
+	it("refuses to bind a room that already steers a different project", async () => {
 		const t: Setup = await setup();
 		const first = join(t.sandbox, "one");
 		const second = join(t.sandbox, "two");
@@ -65,9 +65,6 @@ describe("bind", () => {
 		const clash = await t.projects.bind("two", second, "!proj:jacks.im", t.api);
 		expect(clash.ok).toBe(false);
 		if (!clash.ok) expect(clash.error).toContain("already bound to project one");
-		const name = await t.projects.bind("one", second, "!other:jacks.im", t.api);
-		expect(name.ok).toBe(false);
-		if (!name.ok) expect(name.error).toContain("already bound to room !proj:jacks.im");
 		expect(Object.keys((await t.api.projects()).projects)).toEqual(["one"]);
 	});
 
@@ -79,6 +76,59 @@ describe("bind", () => {
 		const unsafe = await t.projects.bind("Bad Name", t.sandbox, "!p:jacks.im", t.api);
 		expect(unsafe.ok).toBe(false);
 		expect((await t.api.projects()).projects).toEqual({});
+	});
+});
+
+describe("rebind", () => {
+	// `/project bind <existing-name> <path>` is an UPSERT: it moves the project
+	// to a new directory (and the room the command is typed in), reconfigures the
+	// existing child conversation, and keeps the conversation id + history. This
+	// is the operation the HANDOFF called "rebind = same command from the right
+	// room" but the code never implemented — it threw "unbinding is not implemented".
+	it("updates cwd and room and re-reads the summary, keeping the conversation id", async () => {
+		const t: Setup = await setup();
+		const dir1 = join(t.sandbox, "first");
+		const dir2 = join(t.sandbox, "second");
+		mkdirSync(dir1, { recursive: true });
+		mkdirSync(dir2, { recursive: true });
+		writeFileSync(join(dir2, "AGENTS.md"), "# Second home\n", { flag: "w" });
+		expect((await t.projects.bind("app", dir1, "!room1:jacks.im", t.api)).ok).toBe(true);
+		const firstConv = (await t.api.projects()).projects.app!.conversation;
+
+		const reb = (await t.projects.bind("app", dir2, "!room2:jacks.im", t.api)) as ProjectOutcome & { ok: true };
+		expect(reb.ok).toBe(true);
+		expect(reb.created).toBe(false);
+
+		const record = (await t.api.projects()).projects.app!;
+		expect(record.cwd).toBe(dir2);
+		expect(record.room).toBe("!room2:jacks.im");
+		expect(record.conversation).toBe(firstConv); // the conversation survives
+		expect(record.summary).toBe("Second home"); // re-read from the new AGENTS.md
+
+		// the child conversation's agent was reconfigured to the new cwd
+		const child = await t.harness.conversation(record.conversation, context);
+		const agent = await child!.agent(context);
+		expect(agent.cwd).toBe(dir2);
+		expect(agent.instructions).toContain(join(dir2, "AGENTS.md"));
+	});
+
+	it("refuses to rebind onto a room owned by a different project", async () => {
+		const t: Setup = await setup();
+		const d1 = join(t.sandbox, "one");
+		const d2 = join(t.sandbox, "two");
+		const d3 = join(t.sandbox, "three");
+		mkdirSync(d1, { recursive: true });
+		mkdirSync(d2, { recursive: true });
+		mkdirSync(d3, { recursive: true });
+		await t.projects.bind("one", d1, "!room1:jacks.im", t.api);
+		await t.projects.bind("two", d2, "!room2:jacks.im", t.api);
+
+		const clash = await t.projects.bind("one", d3, "!room2:jacks.im", t.api);
+		expect(clash.ok).toBe(false);
+		if (!clash.ok) expect(clash.error).toContain("already bound to project two");
+		// nothing moved
+		expect((await t.api.projects()).projects.one!.room).toBe("!room1:jacks.im");
+		expect((await t.api.projects()).projects.one!.cwd).toBe(d1);
 	});
 });
 

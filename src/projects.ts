@@ -297,29 +297,54 @@ export function createProjects(host: ProjectsHost) {
 			conversation = await api.commit(async (tx) => {
 				const doc = await tx.doc(ProjectsDoc, api.main);
 				const existing = doc.projects[name];
-				if (existing !== undefined) {
+				if (existing !== undefined && created) {
+					// `/project new` pre-refuses an existing name outside the commit; reaching
+					// here with created=true means a race between two scaffolds. Refuse
+					// rather than silently clobber a scaffolded directory's binding.
 					throw new Error(
-						`project ${name} is already bound to room ${existing.room} (conversation ${existing.conversation}); unbinding is not implemented`,
+						`project ${name} already exists (room ${existing.room}); /project bind it to rebind, or /project list them`,
 					);
 				}
+				// No OTHER project may own the target room. The project being (re)bound
+				// is allowed to take this room, so skip it in the clash check.
 				for (const [other, record] of Object.entries(doc.projects)) {
+					if (other === name) continue;
 					if (record.room !== room) continue;
 					throw new Error(
-						`this room is already bound to project ${other}; a room steers one project (unbinding is not implemented)`,
+						`this room is already bound to project ${other}; a room steers one project`,
 					);
 				}
-				const anchor = await tx.createTask(
-					anchorTask,
-					{ name },
-					{ ownership: { kind: "conversation" }, conversationId: api.main, background: true },
-				);
-				const child = await tx.createConversation({ ownership: { kind: "task", taskId: anchor } });
 				const change = {
 					instructions: projectInstructions({ name, cwd: dir, instructionsPath }),
 					model: { provider: host.provider, modelId: host.model },
 					cwd: dir,
 					...(host.hideExtensions.length > 0 ? { extensions: { remove: [...host.hideExtensions] } } : {}),
 				};
+				if (existing !== undefined) {
+					// REBIND: reconfigure the existing child conversation + its marker, keep
+					// the conversation id (and so its history). The registry row is
+					// updated in place — pointers only, never a copy of instructions.
+					await configure(tx, existing.conversation, change);
+					const marker = await tx.doc(ProjectDoc, existing.conversation);
+					marker.cwd = dir;
+					marker.instructions_path = instructionsPath;
+					doc.projects[name] = {
+						room,
+						conversation: existing.conversation,
+						cwd: dir,
+						instructions_path: instructionsPath,
+						summary,
+						created: existing.created,
+					};
+					return existing.conversation;
+				}
+				// NEW bind: anchor + child conversation + marker + registry record.
+				const anchor = await tx.createTask(
+					anchorTask,
+					{ name },
+					{ ownership: { kind: "conversation" }, conversationId: api.main, background: true },
+				);
+				const child = await tx.createConversation({ ownership: { kind: "task", taskId: anchor } });
 				await configure(tx, child.id, change);
 				const marker = await tx.doc(ProjectDoc, child.id);
 				marker.name = name;
