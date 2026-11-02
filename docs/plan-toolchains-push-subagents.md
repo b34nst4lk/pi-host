@@ -292,11 +292,15 @@ toggles it.
 
 ---
 
-## WS3 — gh CLI + token delivery (Q4=a, Q8=a)
+## WS3 - gh CLI + token delivery (Q4=a, Q8=a) - LANDED 2026-11-02
 
 Goal: `gh` in the toolchain; a persistent ro host file `github_token` staged
 from vaultwarden; the runner auths `gh` from it at startup into a shared
 config dir; that dir is the `GH_CONFIG_DIR` WS2 wires.
+
+**Done:** gh seeded into the toolchain (static Go binary, 2.98.0); PAT staged at ~/.secrets/pi-host/github_token (0600, persistent - survives reboot); compose mounts it :ro at /run/secrets-persistent/github_token; runner auths gh into a gitignored /opt/pi-host/.gh (GH_CONFIG_DIR), runs gh auth setup-git. Verified in-container: gh auth status = logged in as b34nst4lk; git credential helper configured; token NOT in docker inspect env; PAT accesses all 5 scoped repos (pi-host, fourier, pr-review-workflow, cartographer, blog).
+
+**Lesson (worth a plan-and-lessons entry):** the tmpfs file mounts (matrix_token, ollama_key) at /run/secrets/<name>:ro make /run/secrets read-only, so a further file mountpoint at /run/secrets/github_token fails with 'read-only file system'. The persistent GitHub PAT mounts at /run/secrets-persistent/github_token instead (a separate dir), and the runner reads it from there. General rule: a read-only dir mount blocks later file mounts inside it - use per-file mounts or a separate mount dir for mixed persistent + tmpfs secrets.
 
 Mostly **ops** (host file, compose mount, runner). One pure seam from WS2
 already covers the env wiring; this workstream provides the config dir.
