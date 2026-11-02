@@ -4,5 +4,7 @@ dist/
 *.log
 .env
 workspace/
+# Project scaffolds live under /opt/projects, not nested in this repo.
+projects/
 # Gleam compiler output; the deployed bundle in wall/assets IS committed.
 wall/build/
