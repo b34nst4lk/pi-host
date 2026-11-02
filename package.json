@@ -8,7 +8,7 @@
 		"test": "vitest --run",
 		"typecheck": "tsc --noEmit",
 		"fsize": "node scripts/fsize.mjs",
-		"wall:test": "cd wall && gleam test",
+		"wall:test": "cd wall && rm -rf build && gleam test",
 		"gates": "npm run typecheck && npm test && npm run fsize && npm run wall:test"
 	},
 	"dependencies": {
