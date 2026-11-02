@@ -31,6 +31,12 @@ for secret in matrix_token ollama_key; do
 		exit 1
 	fi
 done
+# The GitHub PAT is a persistent host file (survives reboot, unlike the tmpfs
+# secrets): ~/.secrets/pi-host/github_token → /run/secrets/github_token:ro.
+if [ ! -s "$SECRETS_DIR/github_token" ]; then
+	echo "FAIL: $SECRETS_DIR/github_token missing or empty — bind-mount ~/.secrets/pi-host/github_token read-only at /run/secrets/github_token:ro and keep it 0600" >&2
+	exit 1
+fi
 
 ROOM="${1:-${MATRIX_ROOM:-}}"
 USERS="${2:-${MATRIX_ALLOWED_USERS:-}}"
@@ -61,7 +67,7 @@ export PI_HOST_SANDBOX="${PI_HOST_SANDBOX:-$APP_DIR/workspace}"
 MATRIX_ACCESS_TOKEN="$(cat "$SECRETS_DIR/matrix_token")"
 OLLAMA_API_KEY="$(cat "$SECRETS_DIR/ollama_key")"
 export MATRIX_ACCESS_TOKEN OLLAMA_API_KEY
-trap 'unset MATRIX_ACCESS_TOKEN OLLAMA_API_KEY' EXIT
+trap 'unset MATRIX_ACCESS_TOKEN OLLAMA_API_KEY GITHUB_TOKEN' EXIT
 
 # The persistent toolchain dir (host: ~/…/pi-host-toolchains → /opt/toolchains,
 # :ro from compose): gleam now, gh and others later. Host-seeded (uid 1000)
@@ -69,6 +75,21 @@ trap 'unset MATRIX_ACCESS_TOKEN OLLAMA_API_KEY' EXIT
 # here means the daemon's tool-exec env (bash) finds gleam for `npm run gates`
 # and `wall/build.sh`.
 export PATH="/opt/toolchains/bin:${PATH}"
+
+# Auth the toolchain's gh CLI once at startup, into a gitignored config dir the
+# agent's tool-exec env points at (GH_CONFIG_DIR). The token rides stdin to
+# `gh auth login --with-token` (never argv, never the daemon env, never a log),
+# then is unset before exec; `gh auth setup-git` makes `git push` over HTTPS use it.
+# A failed auth is a WARN, not fatal: the daemon still comes up without push.
+export GH_CONFIG_DIR="$APP_DIR/.gh"
+mkdir -p "$GH_CONFIG_DIR"
+GITHUB_TOKEN="$(cat "$SECRETS_DIR/github_token")"
+if ! gh auth login --with-token <<<"$GITHUB_TOKEN" >/dev/null 2>&1; then
+	echo "WARN: gh auth failed — git push/PR disabled (check /run/secrets/github_token)" >&2
+else
+	gh auth setup-git >/dev/null 2>&1
+fi
+unset GITHUB_TOKEN
 
 # Same storage file as the host runner: exactly one process may own it, so the
 # host daemon must be stopped before this container starts (the cutover step).

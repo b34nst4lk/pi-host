@@ -6,5 +6,7 @@ dist/
 workspace/
 # Project scaffolds live under /opt/projects, not nested in this repo.
 projects/
+# The toolchain's gh auth config (created at startup from the staged PAT).
+.gh/
 # Gleam compiler output; the deployed bundle in wall/assets IS committed.
 wall/build/

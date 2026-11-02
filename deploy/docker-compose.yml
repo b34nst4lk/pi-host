@@ -57,6 +57,9 @@ services:
       # The persistent toolchain dir: gleam now, gh and others later. Host-
       # seeded (uid 1000); :ro until agent self-service installs (a later step).
       - /home/jacksim/hermes-users/jacksim/workspace/pi-host-toolchains:/opt/toolchains:ro
+      # GitHub PAT (persistent host file, survives reboot unlike the tmpfs secrets):
+      # the toolchain's gh CLI auths from it at startup into /opt/pi-host/.gh.
+      - /home/jacksim/.secrets/pi-host/github_token:/run/secrets/github_token:ro
       # Host tmpfs, read-only: nothing secret ever lands on disk.
       - /dev/shm/pi-host:/run/secrets:ro
     extra_hosts:
