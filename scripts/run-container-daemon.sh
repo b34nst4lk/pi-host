@@ -2,19 +2,26 @@
 # In-container runner for pi-host's daemon (container twin of
 # scripts/run-host-daemon.sh).
 #
-# Secrets arrive as FILES from a read-only bind mount of the host tmpfs:
-#   /run/secrets/matrix_token   (bot access token, 0600 on the host)
-#   /run/secrets/ollama_key     (ollama cloud key, 0600 on the host)
-# They are read into the environment and unset on exit. Values are never echoed,
-# never logged, never an argv element and never a compose `environment:` value —
-# `docker inspect` shows env, so env-with-values is the leak pattern this
-# deliberately avoids.
+# Secrets arrive as FILES from read-only bind mounts:
+#   /run/secrets/matrix_token       (bot access token, 0600 on the host tmpfs)
+#   /run/secrets/ollama_key           (ollama cloud key, 0600 on the host tmpfs)
+#   /run/secrets-persistent/github_token (GitHub PAT, persistent host file)
+# The tmpfs pair die on reboot (re-stage from vaultwarden); the GitHub PAT is on
+# disk and survives. They are read into the environment and unset on exit.
+# Values are never echoed, never logged, never an argv element and never a
+# compose `environment:` value — `docker inspect` shows env, so env-with-values
+# is the leak pattern this deliberately avoids.
+#
+# The GitHub PAT mounts at /run/secrets-persistent (not /run/secrets) because the
+# tmpfs file mounts create /run/secrets read-only, which blocks a later file
+# mountpoint inside it.
 #
 # Room and allow-list come from MATRIX_ROOM / MATRIX_ALLOWED_USERS (compose
 # environment, non-secret) or from $1 / $2 for a one-off `docker run`.
 set -euo pipefail
 
 SECRETS_DIR="${SECRETS_DIR:-/run/secrets}"
+SECRETS_PERSISTENT_DIR="${SECRETS_PERSISTENT_DIR:-/run/secrets-persistent}"
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 # Guard against being run from a stray copy (e.g. a probe copy under
 # workspace/tmp/): a wrong APP_DIR would silently point PI_HOST_DB at a
@@ -27,14 +34,14 @@ cd "$APP_DIR"
 
 for secret in matrix_token ollama_key; do
 	if [ ! -s "$SECRETS_DIR/$secret" ]; then
-		echo "FAIL: $SECRETS_DIR/$secret missing or empty — bind-mount the host tmpfs read-only there (/dev/shm/pi-host:/run/secrets:ro) and keep it 0600" >&2
+		echo "FAIL: $SECRETS_DIR/$secret missing or empty — bind-mount the host tmpfs read-only there (/dev/shm/pi-host:/run/secrets/<name>:ro) and keep it 0600" >&2
 		exit 1
 	fi
 done
 # The GitHub PAT is a persistent host file (survives reboot, unlike the tmpfs
-# secrets): ~/.secrets/pi-host/github_token → /run/secrets/github_token:ro.
-if [ ! -s "$SECRETS_DIR/github_token" ]; then
-	echo "FAIL: $SECRETS_DIR/github_token missing or empty — bind-mount ~/.secrets/pi-host/github_token read-only at /run/secrets/github_token:ro and keep it 0600" >&2
+# secrets): ~/.secrets/pi-host/github_token → /run/secrets-persistent/github_token:ro.
+if [ ! -s "$SECRETS_PERSISTENT_DIR/github_token" ]; then
+	echo "FAIL: $SECRETS_PERSISTENT_DIR/github_token missing or empty — bind-mount ~/.secrets/pi-host/github_token read-only at /run/secrets-persistent/github_token:ro and keep it 0600" >&2
 	exit 1
 fi
 
@@ -83,9 +90,9 @@ export PATH="/opt/toolchains/bin:${PATH}"
 # A failed auth is a WARN, not fatal: the daemon still comes up without push.
 export GH_CONFIG_DIR="$APP_DIR/.gh"
 mkdir -p "$GH_CONFIG_DIR"
-GITHUB_TOKEN="$(cat "$SECRETS_DIR/github_token")"
+GITHUB_TOKEN="$(cat "$SECRETS_PERSISTENT_DIR/github_token")"
 if ! gh auth login --with-token <<<"$GITHUB_TOKEN" >/dev/null 2>&1; then
-	echo "WARN: gh auth failed — git push/PR disabled (check /run/secrets/github_token)" >&2
+	echo "WARN: gh auth failed — git push/PR disabled (check /run/secrets-persistent/github_token)" >&2
 else
 	gh auth setup-git >/dev/null 2>&1
 fi

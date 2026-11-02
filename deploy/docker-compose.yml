@@ -57,11 +57,16 @@ services:
       # The persistent toolchain dir: gleam now, gh and others later. Host-
       # seeded (uid 1000); :ro until agent self-service installs (a later step).
       - /home/jacksim/hermes-users/jacksim/workspace/pi-host-toolchains:/opt/toolchains:ro
-      # GitHub PAT (persistent host file, survives reboot unlike the tmpfs secrets):
-      # the toolchain's gh CLI auths from it at startup into /opt/pi-host/.gh.
-      - /home/jacksim/.secrets/pi-host/github_token:/run/secrets/github_token:ro
-      # Host tmpfs, read-only: nothing secret ever lands on disk.
-      - /dev/shm/pi-host:/run/secrets:ro
+      # Secrets ride /run/secrets/<name> read-only. Per-file mounts (not a
+      # dir mount) so a read-only /run/secrets rootfs doesn't block a later
+      # file mountpoint. matrix_token + ollama_key: host tmpfs (die on reboot,
+      # re-stage from vaultwarden); github_token: persistent host file (survives).
+      - /dev/shm/pi-host/matrix_token:/run/secrets/matrix_token:ro
+      - /dev/shm/pi-host/ollama_key:/run/secrets/ollama_key:ro
+      # GitHub PAT: persistent host file (survives reboot, unlike the tmpfs secrets).
+      # Mounted at /run/secrets-persistent (not /run/secrets, which the
+      # tmpfs file mounts above create read-only) to avoid a mountpoint conflict.
+      - /home/jacksim/.secrets/pi-host/github_token:/run/secrets-persistent/github_token:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
