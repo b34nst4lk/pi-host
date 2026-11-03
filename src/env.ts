@@ -88,6 +88,18 @@ export function resolveAgentSandbox(target: Pick<EnvTarget, "cwd">, fallback: st
  * helper carries the host's token. `undefined` means "cannot push", and it is the
  * only value a conversation without the project's push flag ever gets — the token
  * stays central and never enters a project directory or the registry.
+ *
+ * KNOWN EXPOSURE (deliberate, v1): the grant is a DIRECTORY, and `gh` keeps the
+ * token in `<configDir>/hosts.yml`. Mode `0600` does not help — tool execs run as
+ * the same uid as the daemon, so a granted agent's `cat "$GH_CONFIG_DIR/hosts.yml"`
+ * reads it, and the PAT is fine-grained over five repos, not one: a grant given to
+ * one project reaches the other four too. The flag gates which CONVERSATION inherits
+ * the credential, not what the credential can reach, and revoking the grant does not
+ * un-leak a token that was already read — only rotating the PAT does. Containment
+ * options, in order of cost: one fine-grained token per project; the daemon pushing
+ * on the agent's behalf so no credential is ever handed out; or accept this for a
+ * trusted agent on a scoped token (today's choice). `NodeExecutionEnv` is not a
+ * sandbox, so nothing in this module can close it.
  */
 export type GitPush = { readonly configDir: string };
 

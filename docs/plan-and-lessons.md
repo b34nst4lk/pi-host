@@ -141,7 +141,14 @@ unit-tested.
   revocable, and the daemon never sees it: the runner turns it into an `gh`
   config dir (`/opt/pi-host/.gh`, gitignored) and hands over only the directory
   path (`PI_HOST_GH_CONFIG_DIR`). Tools can spend it only where `/project push`
-  granted it.
+  granted it — **but a granted conversation can read it**: `gh` keeps the token in
+  `<configDir>/hosts.yml`, and `0600` buys nothing when the tool execs run as the
+  same uid as the daemon. So the flag gates inheritance, not reach: the PAT is
+  scoped to five repos, a grant for one project therefore reaches all five, and
+  revoking the grant does not un-leak a token already read — only rotating the PAT
+  does. Accepted for v1 (trusted agent, scoped token); containment options are one
+  token per project, or the daemon pushing on the agent's behalf so no credential
+  is ever handed out.
 - The runners — `scripts/run-host-daemon.sh` (host fallback) and
   `scripts/run-container-daemon.sh` (what compose calls) — read staged files
   and **export** env (`exec`), so values never appear in `ps`/`pgrep` output.

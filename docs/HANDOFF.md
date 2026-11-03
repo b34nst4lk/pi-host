@@ -198,6 +198,15 @@ same ledger. Containers: `pi-host` (the daemon, rw) + `pi-wall` (all mounts ro).
 - **`/embed` fix**: host Ollama needs `OLLAMA_HOST=0.0.0.0` + two scoped ufw
   allows (bridge→host is dropped; see ollama-loopback-investigation.md).
 - **Backup consistency** for the ledger (quiesce or `sqlite3 .backup`).
+- **Known exposure: a push-granted project can READ the token.** `/project push`
+  hands out a `gh` config dir, and `gh` keeps the token in
+  `<configDir>/hosts.yml` — `0600` is no protection because tool execs run as the
+  same uid as the daemon. Two consequences: the PAT is fine-grained over five
+  repos, so a grant for one project reaches the other four; and `/project push
+  <name> off` does not undo a read — only rotating the PAT does. Accepted for v1
+  (trusted agent, scoped token, no sandbox: `NodeExecutionEnv` is not one).
+  Containment, cheapest first: one fine-grained token per project; the daemon
+  pushing on the agent's behalf so no credential is ever handed out.
 - **Branch protection on `main` (WS5) is BLOCKED on a GitHub plan limit**: the
   rulesets/branch-protection API answers `403 Upgrade to GitHub Pro or make
   this repository public` for the three PRIVATE repos (pi-host,
