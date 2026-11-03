@@ -77,7 +77,7 @@ import {
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { createAgentEnv, gitPushFor } from "./env.ts";
 import { ACK_REACTION, roomShort, submitMatrixCommand, type EventId } from "./core/steer.ts";
-import { createRoomRouter, roomForConversation } from "./rooms.ts";
+import { createRoomRouter, resolveReportRoom } from "./rooms.ts";
 import { createProjects, type ProjectOutcome, type ProjectsApi } from "./projects.ts";
 import { EMPTY_PROJECTS, ProjectDoc, ProjectsDoc, type ProjectsState } from "./project-registry.ts";
 import { createMatrixClient } from "./surfaces/matrix-client.ts";
@@ -134,15 +134,9 @@ const replyTargetFor = (room: string): EventId | null => lastInbound.get(room) ?
  * is open, below.
  */
 let projectRegistry: (() => Promise<ProjectsState>) | undefined;
-async function reportRoom(conversation: ConversationId): Promise<string> {
-	if (projectRegistry === undefined) return env.room;
-	try {
-		return roomForConversation(await projectRegistry(), conversation) ?? env.room;
-	} catch (error) {
-		// A registry read that fails must not lose the report: the main room still hears it.
-		journal(`subagent report room lookup failed: ${reason(error)}`);
-		return env.room;
-	}
+
+function reportRoom(conversation: ConversationId): Promise<string> {
+	return resolveReportRoom(projectRegistry, conversation, env.room, journal);
 }
 
 /** The subagent runtime: named persistent children in their own worktrees. */

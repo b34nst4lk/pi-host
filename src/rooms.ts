@@ -54,6 +54,30 @@ export function roomForConversation(state: ProjectsState, conversation: Conversa
 	return null;
 }
 
+/**
+ * Where a subagent's report goes: the room of the conversation that SPAWNED it,
+ * falling back to `fallbackRoom`.
+ *
+ * The reader is injected and may be absent (the registry is opened late in boot)
+ * or fail (a ledger read can throw), and a report must never be lost to either:
+ * every path but a bound project lands in the main room, and the failure is
+ * reported through `onError` so it survives when nobody is watching the room.
+ */
+export async function resolveReportRoom(
+	read: (() => Promise<ProjectsState>) | undefined,
+	conversation: ConversationId,
+	fallbackRoom: string,
+	onError: (message: string) => void,
+): Promise<string> {
+	if (read === undefined) return fallbackRoom;
+	try {
+		return roomForConversation(await read(), conversation) ?? fallbackRoom;
+	} catch (error) {
+		onError(`subagent report room lookup failed: ${error instanceof Error ? error.message : String(error)}`);
+		return fallbackRoom;
+	}
+}
+
 /** True for the commands that must work in a room nothing is bound to yet. */
 export function isProjectCommand(command: MatrixCommand | null): boolean {
 	return command !== null && command.action.startsWith("project-");

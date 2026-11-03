@@ -449,6 +449,5 @@ export function createProjects(host: ProjectsHost) {
 			resume only once their definition is registered again). Missed in the
 			2026-10-30 wiring: both project anchors sat pending forever. */
 		extension: { name: "projects", sections: [projectSection], tasks: [anchorTask] } satisfies Extension,
-		anchor: anchorTask,
 	};
 }

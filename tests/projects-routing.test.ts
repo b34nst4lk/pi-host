@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { parseMatrixCommand, roomShort } from "../src/core/steer.ts";
 import { parseProjectName, projectHint, starterAgentsMd, summaryOf } from "../src/projects.ts";
 import { EMPTY_PROJECTS } from "../src/project-registry.ts";
-import { isProjectCommand, roomForConversation, routeRoom } from "../src/rooms.ts";
+import { isProjectCommand, resolveReportRoom, roomForConversation, routeRoom } from "../src/rooms.ts";
 import { bound, event, routerWith } from "./projects-fixtures.ts";
 
 
@@ -98,6 +98,40 @@ describe("route table", () => {
 		// to the fallback room, which is why the lookup is `?? fallback` in the daemon.
 		expect(roomForConversation(state, 9 as ConversationId)).toBeNull();
 		expect(roomForConversation(state, 1 as ConversationId)).toBeNull();
+	});
+});
+
+// --- report routing --------------------------------------------------------
+
+// A subagent's report must never be LOST, and the three ways the registry can
+// refuse to answer (not opened yet, throws, no row) all mean the same thing: post
+// to the fallback room. Only a failed read is worth a journal line.
+describe("a subagent report finds its room", () => {
+	const fallbackRoom = "!main:jacks.im";
+	const errors: string[] = [];
+	const note = (message: string) => void errors.push(message);
+	const state = bound(EMPTY_PROJECTS, "app", 7, "!proj:jacks.im");
+
+	it("posts into the room of the conversation that spawned it", async () => {
+		expect(await resolveReportRoom(async () => state, 7 as ConversationId, fallbackRoom, note)).toBe("!proj:jacks.im");
+		expect(errors).toEqual([]);
+	});
+
+	it("falls back for a subagent of the main agent, or of an unbound conversation", async () => {
+		expect(await resolveReportRoom(async () => state, 9 as ConversationId, fallbackRoom, note)).toBe(fallbackRoom);
+		expect(await resolveReportRoom(async () => EMPTY_PROJECTS, 7 as ConversationId, fallbackRoom, note)).toBe(fallbackRoom);
+		expect(errors).toEqual([]);
+	});
+
+	it("falls back before the registry is open, without pretending that is an error", async () => {
+		expect(await resolveReportRoom(undefined, 7 as ConversationId, fallbackRoom, note)).toBe(fallbackRoom);
+		expect(errors).toEqual([]);
+	});
+
+	it("falls back when the read throws, and says so once", async () => {
+		const boom = () => Promise.reject(new Error("ledger is locked"));
+		expect(await resolveReportRoom(boom, 7 as ConversationId, fallbackRoom, note)).toBe(fallbackRoom);
+		expect(errors).toEqual(["subagent report room lookup failed: ledger is locked"]);
 	});
 });
 
