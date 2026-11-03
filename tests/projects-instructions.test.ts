@@ -8,7 +8,8 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createReplyPump } from "../src/core/steer.ts";
-import { EMPTY_PROJECTS, describeProjects } from "../src/projects.ts";
+import { describeProjects } from "../src/projects.ts";
+import { EMPTY_PROJECTS } from "../src/project-registry.ts";
 import { type Setup, capture, context, promptText, setup, submit, waitUntil } from "./projects-fixtures.ts";
 
 

@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { type ProjectOutcome } from "../src/projects.ts";
+import { ProjectDoc } from "../src/project-registry.ts";
 import { type Setup, bound, context, setup } from "./projects-fixtures.ts";
 
 
@@ -33,7 +34,15 @@ describe("bind", () => {
 		expect(record.instructions_path).toBe(join(dir, "AGENTS.md"));
 		expect(record.summary).toBe("");
 		// pointers only: the record must not carry the file's content
-		expect(Object.keys(record).sort()).toEqual(["conversation", "created", "cwd", "instructions_path", "room", "summary"]);
+		expect(Object.keys(record).sort()).toEqual([
+			"conversation",
+			"created",
+			"cwd",
+			"instructions_path",
+			"push",
+			"room",
+			"summary",
+		]);
 
 		const child = await t.harness.conversation(record.conversation, context);
 		expect(child).toBeDefined();
@@ -41,7 +50,7 @@ describe("bind", () => {
 		expect(agent.cwd).toBe(dir);
 		expect(agent.instructions).toContain("app");
 		expect(agent.instructions).toContain(join(dir, "AGENTS.md"));
-		// a project is a space, not a spawner: the hidden extension is gone
+		// a project is a steer agent in its own repository: the subagent tool stays (WS4)
 		expect(agent.model).toEqual({ provider: "faux", modelId: "faux-1" });
 	});
 
@@ -187,3 +196,79 @@ describe("new", () => {
 	});
 });
 
+
+// --- push permission (WS2): off by default, granted by a command ------------
+
+describe("push", () => {
+	async function bindApp(t: Setup) {
+		const dir = join(t.sandbox, "pushy");
+		mkdirSync(dir, { recursive: true });
+		await t.projects.bind("app", dir, "!pushy:jacks.im", t.api);
+		const record = (await t.api.projects()).projects.app!;
+		return { dir, conversation: record.conversation };
+	}
+
+	it("starts off, and one command flips the registry row and the marker together", async () => {
+		const t: Setup = await setup();
+		const { conversation } = await bindApp(t);
+		expect((await t.api.projects()).projects.app!.push).toBe(false);
+		expect((await t.harness.snapshot(ProjectDoc, conversation, context))!.push).toBe(false);
+
+		expect(await t.projects.push("app", true, t.api)).toContain("push on");
+		expect((await t.api.projects()).projects.app!.push).toBe(true);
+		// the marker is what the env factory reads, so it must agree in the same commit
+		expect((await t.harness.snapshot(ProjectDoc, conversation, context))!.push).toBe(true);
+		expect(await t.projects.list(t.api)).toContain("— push");
+
+		expect(await t.projects.push("app", false, t.api)).toContain("push off");
+		expect((await t.api.projects()).projects.app!.push).toBe(false);
+		expect((await t.harness.snapshot(ProjectDoc, conversation, context))!.push).toBe(false);
+		expect(await t.projects.list(t.api)).not.toContain("— push");
+	});
+
+	it("keeps the permission across a rebind (the conversation, and so the grant, survives)", async () => {
+		const t: Setup = await setup();
+		await bindApp(t);
+		await t.projects.push("app", true, t.api);
+		const moved = join(t.sandbox, "moved");
+		mkdirSync(moved, { recursive: true });
+		expect((await t.projects.bind("app", moved, "!pushy:jacks.im", t.api)).ok).toBe(true);
+		const record = (await t.api.projects()).projects.app!;
+		expect(record.cwd).toBe(moved);
+		expect(record.push).toBe(true);
+	});
+
+	it("grants the project agent the host's gh config dir, and nobody else", async () => {
+		const t: Setup = await setup();
+		const { dir, conversation } = await bindApp(t);
+		const target = { conversationId: conversation, cwd: dir, read: t.harness };
+		const chunks: string[] = [];
+		const probe = async () => {
+			chunks.length = 0;
+			const env = await t.agentEnv(target, context);
+			await env.exec("printenv GH_CONFIG_DIR", { onOutput: (text) => chunks.push(text) }, context);
+			return chunks.join("").trim();
+		};
+		expect(await probe()).toBe("");
+		await t.projects.push("app", true, t.api);
+		expect(await probe()).toBe(t.ghConfigDir);
+		// the main conversation carries no project marker, so the factory can only
+		// grant it nothing (the rule itself is pinned in tests/env.test.ts)
+		const mainEnv = await t.agentEnv({ conversationId: t.root.id, cwd: t.sandbox, read: t.harness }, context);
+		expect(mainEnv.cwd).toBe(t.sandbox);
+	});
+
+	it("refuses a project that does not exist", async () => {
+		const t: Setup = await setup();
+		const line = await t.projects.push("nope", true, t.api);
+		expect(line).toContain("no such project");
+	});
+
+	it("refuses to grant push on a host with no gh config dir, instead of granting nothing", async () => {
+		const t: Setup = await setup({ canPush: false });
+		await bindApp(t);
+		const line = await t.projects.push("app", true, t.api);
+		expect(line).toContain("no gh config dir");
+		expect((await t.api.projects()).projects.app!.push).toBe(false);
+	});
+});

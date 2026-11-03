@@ -20,7 +20,8 @@
 // a function of injected calls, so the multi-room tests run against fakes.
 import type { ConversationId } from "@earendil-works/pi-durable";
 import { parseMatrixCommand, pickNewEvents, roomShort, type EventId, type MatrixCommand, type TextEvent } from "./core/steer.ts";
-import { projectHint, type ProjectsState } from "./projects.ts";
+import { projectHint } from "./projects.ts";
+import { type ProjectsState } from "./project-registry.ts";
 
 /** Ollama-answered commands: one upstream call each, never in the sync loop's path. */
 const OLLAMA_ACTIONS = new Set(["usage", "usage-invalid", "balance", "models", "embed"]);
@@ -53,6 +54,30 @@ export function roomForConversation(state: ProjectsState, conversation: Conversa
 	return null;
 }
 
+/**
+ * Where a subagent's report goes: the room of the conversation that SPAWNED it,
+ * falling back to `fallbackRoom`.
+ *
+ * The reader is injected and may be absent (the registry is opened late in boot)
+ * or fail (a ledger read can throw), and a report must never be lost to either:
+ * every path but a bound project lands in the main room, and the failure is
+ * reported through `onError` so it survives when nobody is watching the room.
+ */
+export async function resolveReportRoom(
+	read: (() => Promise<ProjectsState>) | undefined,
+	conversation: ConversationId,
+	fallbackRoom: string,
+	onError: (message: string) => void,
+): Promise<string> {
+	if (read === undefined) return fallbackRoom;
+	try {
+		return roomForConversation(await read(), conversation) ?? fallbackRoom;
+	} catch (error) {
+		onError(`subagent report room lookup failed: ${error instanceof Error ? error.message : String(error)}`);
+		return fallbackRoom;
+	}
+}
+
 /** True for the commands that must work in a room nothing is bound to yet. */
 export function isProjectCommand(command: MatrixCommand | null): boolean {
 	return command !== null && command.action.startsWith("project-");
@@ -83,10 +108,11 @@ export type RoomRouterDeps = {
 	readonly status: (conversation: ConversationId) => Promise<string>;
 	/** Answer an Ollama query command; never awaited, never throws. */
 	readonly ollama: (command: MatrixCommand, replyTo: EventId, room: string) => void;
-	/** The `/project` handlers: scaffold, bind, list. */
+	/** The `/project` handlers: scaffold, bind, push, list. */
 	readonly project: {
 		create: (name: string, path: string, room: string) => Promise<string>;
 		bind: (name: string, path: string, room: string) => Promise<string>;
+		push: (name: string, enabled: boolean) => Promise<string>;
 		list: () => Promise<string>;
 	};
 	/** Ingested event ids: Matrix ids are `$`-global, so one set spans every room. */
@@ -162,6 +188,11 @@ export function createRoomRouter(deps: RoomRouterDeps) {
 				return;
 			case "project-bind":
 				await replyIn(event.room, await deps.project.bind(command.name, command.path, event.room), event.id);
+				return;
+			case "project-push":
+				// Answered where it was typed, like every project command: the toggle names
+				// its project, so the room it comes from is irrelevant.
+				await replyIn(event.room, await deps.project.push(command.name, command.enabled), event.id);
 				return;
 			case "project-list":
 				await replyIn(event.room, await deps.project.list(), event.id);

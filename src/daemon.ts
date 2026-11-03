@@ -64,19 +64,22 @@
 //   PI_HOST_DB               default ./storage/session.sqlite (renamed from
 //                            the spike's STEER_DB; durable ledger of the host)
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import type { Context } from "@earendil-works/chord";
 import { createModels } from "@earendil-works/pi-ai/models";
-import { defineDoc, Harness, InboxDoc, type ConversationId, type Submission } from "@earendil-works/pi-durable";
-import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
-import { createAgentEnv } from "./env.ts";
-import { ACK_REACTION, roomShort, submitMatrixCommand, type EventId } from "./core/steer.ts";
-import { createRoomRouter } from "./rooms.ts";
 import {
-	createProjects,
-	EMPTY_PROJECTS,
-	ProjectsDoc,
-	type ProjectOutcome,
-	type ProjectsApi,
-} from "./projects.ts";
+	defineDoc,
+	Harness,
+	InboxDoc,
+	type ConversationId,
+	type EnvTarget,
+	type Submission,
+} from "@earendil-works/pi-durable";
+import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
+import { createAgentEnv, gitPushFor } from "./env.ts";
+import { ACK_REACTION, roomShort, submitMatrixCommand, type EventId } from "./core/steer.ts";
+import { createRoomRouter, resolveReportRoom } from "./rooms.ts";
+import { createProjects, type ProjectOutcome, type ProjectsApi } from "./projects.ts";
+import { EMPTY_PROJECTS, ProjectDoc, ProjectsDoc, type ProjectsState } from "./project-registry.ts";
 import { createMatrixClient } from "./surfaces/matrix-client.ts";
 import { createOllamaApi } from "./ollama_api.ts";
 import { envGit } from "./git.ts";
@@ -121,16 +124,31 @@ const lastInbound = new Map<string, EventId>();
 /** The event a reply in `room` should quote, or `null` before any. */
 const replyTargetFor = (room: string): EventId | null => lastInbound.get(room) ?? null;
 
+/**
+ * Where a subagent's report is posted: the room bound to the conversation that
+ * SPAWNED it (a project's agent spawns from its own conversation), the main room
+ * otherwise. A subagent of the main agent reports into the main room.
+ *
+ * The registry is read at SEND time — a spawn is a long-lived task and a bind or
+ * rebind can happen while it runs — so the reader is injected once the harness
+ * is open, below.
+ */
+let projectRegistry: (() => Promise<ProjectsState>) | undefined;
+
+function reportRoom(conversation: ConversationId): Promise<string> {
+	return resolveReportRoom(projectRegistry, conversation, env.room, journal);
+}
+
 /** The subagent runtime: named persistent children in their own worktrees. */
 const subagents = createSubagents({
 	provider: "ollama-cloud",
 	model: env.subagentModel,
 	maxTurns: env.subagentMaxTurns,
 	git: (args, cwd, execEnv, contextArg) => envGit(args, cwd, execEnv, contextArg),
-	roomPost: async (text: string) => {
+	roomPost: async (text: string, conversation: ConversationId) => {
 		try {
-			// Reports thread in the MAIN room: a subagent is the main agent's child.
-			return await client.sendText(env.room, text, replyTargetFor(env.room));
+			const room = await reportRoom(conversation);
+			return await client.sendText(room, text, replyTargetFor(room));
 		} catch (error) {
 			// subagents.ts reports the failure to the reporter task too; the journal is
 			// what survives when nobody is watching the room.
@@ -141,16 +159,18 @@ const subagents = createSubagents({
 	log: (message: string) => log(`[subagent] ${message}`),
 });
 /**
- * The project system: rooms bound to persistent child conversations. Created
- * before the registry because a project agent must not select the subagent tool
- * (`hideExtensions`) — a project is a space, not a spawner.
+ * The project system: rooms bound to persistent child conversations. A project
+ * agent is a normal steer agent in its own directory, so it keeps the subagent
+ * tool (`hideExtensions: []`): it fans work out into worktrees of ITS repository,
+ * and those leaves report into the project's room (see `reportRoom`).
  */
 const projects = createProjects({
 	provider: "ollama-cloud",
 	model: env.ollamaModel,
 	projectsDir: env.projectsDir,
 	git: (args, cwd, execEnv, contextArg) => envGit(args, cwd, execEnv, contextArg),
-	hideExtensions: [subagents.tools],
+	hideExtensions: [],
+	canPush: env.ghConfigDir.length > 0,
 	env: (cwd) => createAgentEnv({ cwd }, env.sandbox),
 	log: (message: string) => log(`[project] ${message}`),
 });
@@ -168,9 +188,20 @@ const SteerCursor = defineDoc<{ ids: Array<string | number> }>({
 const CURSOR_CAP = 200;
 
 const db = await openNodeSqliteStorage(env.db);
+/**
+ * The tools' environment. Read per use, and the ONE place the push permission is
+ * applied: a conversation whose `app.project` marker says `push: true` gets the
+ * host's `gh` config dir, everything else (the main agent, subagents, projects
+ * that never opted in) finds no credential at all.
+ */
+const agentEnv = async (target: EnvTarget, envContext: Context) => {
+	if (env.ghConfigDir.length === 0) return createAgentEnv(target, env.sandbox);
+	const marker = await target.read.snapshot(ProjectDoc, target.conversationId, envContext);
+	return createAgentEnv(target, env.sandbox, { gitPush: gitPushFor(marker, env.ghConfigDir) });
+};
 const harness = await Harness.open(
 	db,
-	{ models, registry, env: (target) => createAgentEnv(target, env.sandbox), settings: { followUpMode: "all", steeringMode: "all" } },
+	{ models, registry, env: agentEnv, settings: { followUpMode: "all", steeringMode: "all" } },
 	context,
 );
 const root = await harness.root(context, {
@@ -291,6 +322,8 @@ const projectApi: ProjectsApi = {
 	commit: (body) => root.commit(body, context),
 	projects: async () => (await harness.snapshot(ProjectsDoc, root.id, context)) ?? EMPTY_PROJECTS,
 };
+// From here on a subagent report finds its room: the registry decides, per spawner.
+projectRegistry = () => projectApi.projects();
 
 /** The reply line for one bind. A bound conversation starts pumping right here. */
 async function afterBind(outcome: ProjectOutcome): Promise<string> {
@@ -335,6 +368,7 @@ const router = createRoomRouter({
 	project: {
 		create: async (name, path, room) => afterBind(await projects.create(name, path, room, projectApi)),
 		bind: async (name, path, room) => afterBind(await projects.bind(name, path, room, projectApi)),
+		push: (name, enabled) => projects.push(name, enabled, projectApi),
 		list: () => projects.list(projectApi),
 	},
 	seen: seenEvents,

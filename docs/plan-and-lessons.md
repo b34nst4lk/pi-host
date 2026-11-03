@@ -135,6 +135,20 @@ unit-tested.
 
 - Secrets exist only as env vars staged at runtime from tmpfs
   (`/dev/shm/pi-host/`), never in files in the repo, argv, chats, or logs.
+  **One deliberate exception (Q8=a):** the GitHub PAT, staged once at
+  `~/.secrets/pi-host/github_token` (0600) and mounted `:ro` from
+  `/run/secrets-persistent/` — it must survive reboot, it is fine-grained and
+  revocable, and the daemon never sees it: the runner turns it into an `gh`
+  config dir (`/opt/pi-host/.gh`, gitignored) and hands over only the directory
+  path (`PI_HOST_GH_CONFIG_DIR`). Tools can spend it only where `/project push`
+  granted it — **but a granted conversation can read it**: `gh` keeps the token in
+  `<configDir>/hosts.yml`, and `0600` buys nothing when the tool execs run as the
+  same uid as the daemon. So the flag gates inheritance, not reach: the PAT is
+  scoped to five repos, a grant for one project therefore reaches all five, and
+  revoking the grant does not un-leak a token already read — only rotating the PAT
+  does. Accepted for v1 (trusted agent, scoped token); containment options are one
+  token per project, or the daemon pushing on the agent's behalf so no credential
+  is ever handed out.
 - The runners — `scripts/run-host-daemon.sh` (host fallback) and
   `scripts/run-container-daemon.sh` (what compose calls) — read staged files
   and **export** env (`exec`), so values never appear in `ps`/`pgrep` output.
@@ -271,8 +285,25 @@ unit-tested.
     only possible because the view reads no clock and fetches nothing. Keeping
     the tab panels in their own modules (`dashboard`, `logs_view`,
     `browser_view`) is what preserved that property as the wall grew tabs.
-## 5. Provenance
+20. **A child process inherits the parent's env, so a permission carried by an
+    env var must be set per exec — and can only be REVOKED explicitly.**
+    `NodeExecutionEnv` builds each exec env as `{...process.env, ...shellEnv}`, so
+    an absent key inherits and only an explicit value overrides. The push opt-in
+    (WS2) therefore sets `GH_CONFIG_DIR` for a granted project conversation and
+    `GH_CONFIG_DIR=""` for everyone else (`gh` with an empty config dir reports
+    "not logged in"; measured). The daemon reads the dir from
+    `PI_HOST_GH_CONFIG_DIR` and the runner unsets its own `GH_CONFIG_DIR` before
+    `exec`: leaving it set would have handed every conversation the credential
+    the flag was meant to gate. Same shape as the exec timeout — the safe
+    default belongs where the child is built, not where it is used.
+21. **A read-only DIRECTORY mount blocks later file mounts inside it.** The
+    tmpfs secrets dir mounts at `/run/secrets:ro`, so mounting a second secret
+    file there fails with `read-only file system`; the persistent GitHub PAT
+    went to `/run/secrets-persistent/github_token` instead (its own dir, one
+    file mount). One mount dir per lifetime class (tmpfs vs persistent) avoids
+    the trap entirely.
 
+## 5. Provenance
 - Research trail: pi background/parallel options → pi-durable fit for the
   persistent multi-project Matrix-steered agent (announcement: "long-running,
   durable, malleable agents… reachable from different surfaces").
@@ -303,8 +334,22 @@ unit-tested.
    (pure `routeRoom`), room-per-project direct routing; anchored subagents
    (worktree-default, hold-on-completion, exactly-once reporting) shipped
    alongside. Three projects live as of 2026-10-31: fourier, pi-host,
-   pr-review-workflow (HANDOFF live state). Per-conversation container
-   isolation (docker-socket-proxy) remains future hardening.
+   pr-review-workflow (HANDOFF live state — by 2026-11-02 only
+   pr-review-workflow carries a registry row, relocated to `/opt/projects/`).
+   Per-conversation container isolation (docker-socket-proxy) remains future
+   hardening.
 9. E2EE upgrade (matrix crypto stack) if encrypted-room steering is ever
    needed. (Live evidence 2026-10-30: fourier's first bind attempt in an
    encrypted room failed silently — steering rooms stay non-encrypted.)
+10. ~~Toolchain dir, push opt-in, project-spawned subagents~~ **DONE
+    2026-11-02** (`docs/plan-toolchains-push-subagents.md` WS1–WS4, WS6):
+    host-seeded `/opt/toolchains` on `PATH` (gleam + gh, `:ro`), gh authed
+    from the persistent PAT into `/opt/pi-host/.gh` and handed to the daemon as
+    `PI_HOST_GH_CONFIG_DIR`, `/project push <name> on|off` flipping a registry
+    boolean that gates `GH_CONFIG_DIR` per tool exec, and project agents
+    keeping the subagent tool with reports routed to the SPAWNING
+    conversation's room (`roomForConversation` at send time).
+    **WS5 is blocked, not done**: GitHub answers `403 Upgrade to GitHub Pro or
+    make this repository public` for rulesets on the private repos, so `main`
+    has no enforcement yet on pi-host, pr-review-workflow and blog. Deployed
+    nothing — the container still runs the pre-WS build (jack's call).

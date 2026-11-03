@@ -2,10 +2,10 @@
 
 Host for a durable agent harness: TypeScript daemon (`src/`) that steers pi-durable
 conversations from Matrix, plus `wall/` — a read-only Gleam/lustre dashboard over the
-ledger. Gates: `npm run gates` (`typecheck` + `test` + `fsize`), and `cd wall && gleam
-test` (gleam lives in `~/.local/bin`; when the sandbox lacks it, say so and leave
-`wall/assets` for a host that has it, since `./build.sh` regenerates them); artifacts
-in `wall/assets` are committed, `wall/build/` is not.
+ledger. Gate: `npm run gates` = `typecheck` + `test` (vitest) + `fsize` + `wall:test`
+(`cd wall && gleam test`). Toolchains come from the host-seeded `/opt/toolchains`
+(`gleam`, `gh`) on `PATH`; `./build.sh` regenerates the committed `wall/assets` (host
+only — container paths leak into the bundle), `wall/build/` is not committed.
 
 ## Skills
 
@@ -27,5 +27,10 @@ Read `skills/<name>/SKILL.md` when its trigger fires. `skills/README.md` is the 
   past that must be split along its module boundary, not padded. `npm run fsize`
   measures (`src/`, `tests/`, `wall/src/`, `wall/test/`, the wall's `index.html`) and
   fails over the limit; 4,000 is the warn line.
-- Secrets live in `/dev/shm` and `/run/secrets` (nothing secret is stored under the repo itself) and
-  are never read, echoed or copied.
+- Secrets live in `/dev/shm` and `/run/secrets` (nothing secret is stored under the repo
+  itself) and are never read, echoed or copied. The one persistent exception is the
+  GitHub PAT at `~/.secrets/pi-host/github_token`; the daemon never reads it and only
+  gets the `gh` config dir path (`PI_HOST_GH_CONFIG_DIR`).
+- `main` is merge-only: never push to `main`, open a PR. GitHub still enforces this on
+  public repos only (rulesets need GitHub Pro on private ones) — the rule binds
+  regardless of what the server would allow.

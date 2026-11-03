@@ -49,7 +49,9 @@ export function createSteerRegistry(
 										"Messages typed in a project's room go straight to that project — they never reach you, and " +
 										"they are not forwarded. Work that spans projects is your job to fan out: a subagent " +
 										"spawned for a project's directory works in its own worktree of that repository, and its " +
-										"report comes back to you. Do not try to drive a project by posting into its room; the " +
+										"report comes back to you. A project's own agent may spawn subagents as well: they work " +
+								"in worktrees of that project's repository and report into that project's room, not here. " +
+								"Do not try to drive a project by posting into its room; the " +
 										"room belongs to the user. Changing a project's instructions means editing its " +
 										"`AGENTS.md` file, which takes effect on its next message; adding one means " +
 										"`/project new` or `/project bind` in the target room, typed by the user.",

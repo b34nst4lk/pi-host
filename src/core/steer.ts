@@ -35,6 +35,7 @@ export type MatrixCommand =
 	// conversation. `path` is "" when the message carried none.
 	| { readonly action: "project-new"; readonly name: string; readonly path: string }
 	| { readonly action: "project-bind"; readonly name: string; readonly path: string }
+	| { readonly action: "project-push"; readonly name: string; readonly enabled: boolean }
 	| { readonly action: "project-list" }
 	| { readonly action: "project-invalid"; readonly text: string };
 
@@ -95,7 +96,8 @@ function parseUsage(rest: string): MatrixCommand {
 }
 
 /**
- * `/project new <name> [path]`, `/project bind <name> <path>`, `/project list`.
+ * `/project new <name> [path]`, `/project bind <name> <path>`, `/project push
+ * <name> on|off`, `/project list`.
  *
  * The room the command arrives in is the room that gets bound (`/project bind`
  * needs no id: a command never binds a room the sender is not in), so a name is
@@ -110,14 +112,23 @@ function parseProject(rest: string): MatrixCommand {
 	const sub = (spaceAt === -1 ? trimmed : trimmed.slice(0, spaceAt)).toLowerCase();
 	const args = spaceAt === -1 ? "" : trimmed.slice(spaceAt + 1).trim();
 	if (sub === "list") return { action: "project-list" };
-	if (sub !== "new" && sub !== "bind") return { action: "project-invalid", text: sub };
+	if (sub !== "new" && sub !== "bind" && sub !== "push") return { action: "project-invalid", text: sub };
 	const nameAt = args.search(/\s/);
 	const name = nameAt === -1 ? args : args.slice(0, nameAt);
+	if (name.length === 0) return { action: "project-invalid", text: `${sub} (no name)` };
 	// The rest of the line is the path, spaces and all: `/project bind x /a b` is
 	// a directory named `a b`, not two arguments.
-	const path = nameAt === -1 ? "" : args.slice(nameAt + 1).trim();
-	if (name.length === 0) return { action: "project-invalid", text: `${sub} (no name)` };
-	return sub === "new" ? { action: "project-new", name, path } : { action: "project-bind", name, path };
+	const restOfLine = nameAt === -1 ? "" : args.slice(nameAt + 1).trim();
+	if (sub === "push") {
+		// The toggle names its project: it is typed in ANY room (it changes the
+		// registry, not a binding), so there is no "the room I am standing in" to infer.
+		const wanted = restOfLine.toLowerCase();
+		if (wanted !== "on" && wanted !== "off") {
+			return { action: "project-invalid", text: `push ${name} ${restOfLine}`.trim() };
+		}
+		return { action: "project-push", name, enabled: wanted === "on" };
+	}
+	return sub === "new" ? { action: "project-new", name, path: restOfLine } : { action: "project-bind", name, path: restOfLine };
 }
 
 /**
@@ -336,6 +347,7 @@ export async function submitMatrixCommand(
 		case "embed":
 		case "project-new":
 		case "project-bind":
+		case "project-push":
 		case "project-list":
 		case "project-invalid":
 			throw new Error(

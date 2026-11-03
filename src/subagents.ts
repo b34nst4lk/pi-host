@@ -23,6 +23,7 @@ import {
 	defineTool,
 	GenerationTask,
 	hook,
+	type ConversationId,
 	type Extension,
 	type JsonObject,
 	type ToolExecutionApi,
@@ -55,8 +56,12 @@ export type SubagentHost = {
 	readonly maxTurns: number;
 	/** Runs git; `envGit` in production. */
 	readonly git: GitRunner;
-	/** Posts to the room, threaded onto the newest inbound message, read at send time. */
-	readonly roomPost: (text: string) => Promise<unknown>;
+	/**
+	 * Posts to the room, threaded onto the newest inbound message, read at send time.
+	 * `conversation` is the spawner: a project's agent spawns from its own
+	 * conversation, so its report belongs in that project's room.
+	 */
+	readonly roomPost: (text: string, conversation: ConversationId) => Promise<unknown>;
 	/** One-line logger. */
 	readonly log?: (message: string) => void;
 };

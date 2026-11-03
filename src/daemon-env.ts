@@ -25,6 +25,17 @@ export function journal(line: string): void {
 	}
 }
 
+/**
+ * The push config dir, read from `PI_HOST_GH_CONFIG_DIR` ONLY. Never from the
+ * daemon's own `GH_CONFIG_DIR`: a tool exec inherits the daemon's process env, so
+ * a `GH_CONFIG_DIR` set here would hand every conversation the credential and the
+ * per-project push flag would mean nothing. The runner exports the dir under this
+ * name on purpose (`scripts/run-container-daemon.sh`).
+ */
+export function ghConfigDirFrom(source: NodeJS.ProcessEnv): string {
+	return source.PI_HOST_GH_CONFIG_DIR ?? "";
+}
+
 export type DaemonEnv = typeof env;
 
 export const env = {
@@ -52,6 +63,9 @@ export const env = {
 	projectsDir: process.env.PROJECTS_DIR ?? resolve(process.env.PI_HOST_SANDBOX ?? "./workspace", "..", "projects"),
 	// One turn budget per child message; `subagent`'s `maxTurns` overrides it.
 	subagentMaxTurns: Number(process.env.SUBAGENT_MAX_TURNS ?? 40),
+	// The `gh` config dir the runner authed at startup; see `ghConfigDirFrom` below
+	// for why the name is PI_HOST_* and not GH_CONFIG_DIR. Empty = no push on this host.
+	ghConfigDir: ghConfigDirFrom(process.env),
 };
 
 /**
